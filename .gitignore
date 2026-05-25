@@ -1,2 +1,5 @@
 # arquivo com variáveis de credencial
 .env
+
+__pycache__/
+*.pyc

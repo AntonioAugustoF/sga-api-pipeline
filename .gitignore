@@ -3,3 +3,7 @@
 
 __pycache__/
 *.pyc
+
+# pastas com dados
+data/raw/
+data/processed/

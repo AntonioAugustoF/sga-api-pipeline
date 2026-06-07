@@ -1,1 +1,14 @@
- 
+pandas==2.3.1
+pyarrow==24.0.0
+psycopg2-binary==2.9.12
+SQLAlchemy==2.0.50
+requests==2.34.2
+python-dotenv==1.2.2
+numpy==2.3.1
+python-dateutil==2.9.0.post0
+pytz==2025.2
+tzdata==2025.2
+certifi==2025.6.15
+charset-normalizer==3.4.3
+idna==3.10
+urllib3==2.5.0

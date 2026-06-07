@@ -1,94 +1,150 @@
-Data Engineering Project - SGA API Pipeline
+# Data Engineering Project - SGA API Pipeline
+
 This repository contains the implementation of a data pipeline (SGA API Pipeline) designed to extract, transform, and load data efficiently, ensuring data consistency and reliability for downstream analysis and reporting.
 
 The pipeline architecture is built using modular Python scripts and industry-standard practices for clean, scalable data engineering.
 
 Access structured and cleaned data ready for consumption. 💪
 
-Table of Contents
-Architecture & Folder Structure
+---
 
-How It Works
+## Table of Contents
 
-Data Extraction
+- [Architecture & Folder Structure](#architecture--folder-structure)
+- [How It Works](#how-it-works)
+  - [Data Extraction](#data-extraction)
+  - [Data Transformation](#data-transformation)
+  - [Data Load](#data-load)
+  - [Infrastructure & Orchestration](#infrastructure--orchestration)
+- [Entities](#entities)
+- [Prerequisites](#prerequisites)
+- [Running Project](#running-project)
+- [License](#license)
+- [Contact](#contact)
 
-Data Transformation
+---
 
-Data Load
+## Architecture & Folder Structure
 
-Infrastructure & Orchestration
-
-Prerequisites
-
-Running Project
-
-License
-
-Contact
-
-Architecture & Folder Structure
 The project follows a rigorous separation of concerns to ensure maintainability:
 
-Plaintext
+```
 sga-api-pipeline/
-├── data/               # Local data storage for micro-batches / staging area
-├── extract/            # Extraction scripts (APIs, Database connectors)
+├── data/
+│   ├── raw/            # Raw JSON files extracted from the API
+│   └── processed/      # Cleaned Parquet files ready for loading
+├── extract/            # Extraction scripts (API connectors)
 ├── infra/              # Infrastructure configurations and database connections
-├── load/               # Loading modules (Data Warehouse / Database insertions)
+├── load/               # Loading modules (PostgreSQL insertions)
 ├── logs/               # Application and pipeline execution logs
 ├── orchestrators/      # Pipeline automation and scheduling scripts
-└── transform/          # Data cleaning, processing, and business logic (Pandas/SQL)
-How It Works
-Data Extraction
-The modules inside the /extract folder are responsible for connecting to source systems (APIs or transactional databases). It fetches new data in batches, ensuring connection security through environment variables (.env).
+└── transform/          # Data cleaning, processing, and business logic (Pandas)
+```
 
-Data Transformation
-Inside the /transform folder, data undergoes rigorous cleaning and structuring:
+---
 
-Data type casting and formatting.
+## How It Works
 
-Handling missing values and duplicates.
+### Data Extraction
 
-Applying business rules and preparation for dimensional modeling (Fact and Dimension tables).
+The modules inside the `/extract` folder are responsible for connecting to the SGA API. They fetch data in paginated batches across all available statuses, ensuring connection security through environment variables (`.env`). Raw data is saved as JSON files in `data/raw/`.
 
-Data Load
-The processed data from the /load folder is safely written into the target analytical database (Data Warehouse/Data Lake). It uses upsert functionality or append-only strategies depending on the dataset requirements to ensure historical persistence.
+### Data Transformation
 
-Infrastructure & Orchestration
-Infrastructure (/infra): Manages database connection pools, environment configuration checks, and logging configurations to track the pipeline health.
+Inside the `/transform` folder, data undergoes rigorous cleaning and structuring:
 
-Orchestration (/orchestrators): Responsible for triggering the execution flow of the ETL phases (E -> T -> L) in the correct sequence and scheduling periodic runs.
+- Data type casting and formatting.
+- Handling missing values and duplicates.
+- Serialization of nested fields (arrays and dictionaries).
+- History tracking for entities with status changes (Customers and Vehicles).
 
-Prerequisites
+Cleaned data is saved as Parquet files in `data/processed/`.
+
+### Data Load
+
+The `/load` folder safely writes processed data into PostgreSQL. It uses a `replace` strategy for dimension tables (always reflecting the current state) and an `append` strategy for history tables (ensuring historical persistence).
+
+### Infrastructure & Orchestration
+
+**Infrastructure (`/infra`):** Manages database connection pools, API authentication, and environment configuration.
+
+**Orchestration (`/orchestrators`):** Triggers the execution flow of the ETL phases (Extract → Transform → Load) in the correct sequence.
+
+---
+
+## Entities
+
+| Entity | Table | History Table |
+|---|---|---|
+| Volunteers | `dim_volunteers` | — |
+| Cooperatives | `dim_cooperatives` | — |
+| Regionals | `dim_regionals` | — |
+| Customers | `dim_customers` | `dim_customers_history` |
+| Vehicles | `dim_vehicles` | `dim_vehicles_history` |
+
+---
+
+## Prerequisites
+
 Software required to run the project locally:
 
-Python 3.10+
+- Python 3.10+
+- PostgreSQL
+- Essential packages listed in `requirements.txt`
+- Environment file configured (`.env`)
 
-Essential packages listed in requirements.txt
+---
 
-Environment file configured (.env)
+## Running Project
 
-Running Project
 Clone the repository:
 
-Bash
+```bash
 git clone https://github.com/AntonioAugustof/sga-api-pipeline.git
 cd sga-api-pipeline
+```
+
 Install dependencies:
 
-Bash
+```bash
 pip install -r requirements.txt
-Configure your environment variables:
-Create a .env file in the root directory (based on your configuration needs).
+```
 
-Run the pipeline orchestrator:
+Configure your environment variables — create a `.env` file in the root directory:
 
-Bash
-python orchestrators/main_pipeline.py
-License
-Distributed under the MIT License. See LICENSE for more information.
+```env
+API_BASE_URL=https://your-api-url.com
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=your_database
+DB_USER=your_user
+DB_PASSWORD=your_password
+```
 
-Contact
+Run the full pipeline:
+
+```bash
+python -m orchestrators.run_pipeline
+```
+
+Or run individual stages:
+
+```bash
+python -m extract.extract_volunteers
+python -m transform.transform_volunteers
+python -m load.load_dimensions
+```
+
+---
+
+## License
+
+Distributed under the MIT License. See `LICENSE` for more information.
+
+---
+
+## Contact
+
 Please feel free to contact me if you have any questions.
 
 Antonio Augusto - @AntonioAugustoF

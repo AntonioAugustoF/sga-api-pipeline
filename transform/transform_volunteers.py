@@ -8,6 +8,7 @@ def transform() -> pd.DataFrame:
     df.columns = df.columns.str.lower().str.strip()
     df["situacao_origem"] = df["situacao_origem"].str.lower().str.strip()
     df = df.drop_duplicates(subset=["codigo_voluntario"])
+    df["cooperativas"] = df["cooperativas"].astype(str)
     df = df.dropna(how="all")
 
     # Save to processed/

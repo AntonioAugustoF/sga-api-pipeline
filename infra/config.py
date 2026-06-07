@@ -19,7 +19,6 @@ class Config:
     # ====================================
     # 2. ACESSO AO SISTEMA ORIGEM
     # ====================================
-    SYSTEM_URL = os.getenv("SYSTEM_URL")
     SYSTEM_USER = os.getenv("SYSTEM_USER")
     SYSTEM_PASSWORD = os.getenv("SYSTEM_PASSWORD")
 

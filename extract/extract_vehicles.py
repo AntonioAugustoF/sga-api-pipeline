@@ -95,8 +95,8 @@ def run_vehicle_extraction():
         
         # 5. Save the raw file to the data/ folder (Staging area)
         current_date = datetime.now().strftime("%Y-%m-%d")
-        file_name = f"raw_vehicles_{current_date}.json"
-        output_path = os.path.join("data", file_name)
+        file_name = f"vehicles_{current_date}.json"
+        output_path = os.path.join("data", "raw", file_name)
         
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(unique_vehicles, f, ensure_ascii=False, indent=2)

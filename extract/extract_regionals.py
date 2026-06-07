@@ -72,7 +72,7 @@ def run_regional_extraction():
         print(f"\n📊 Total extracted: {len(all_records)} | Unique: {len(unique_regionals)}")
         
         current_date = datetime.now().strftime("%Y-%m-%d")
-        file_name = f"regionais_{current_date}.json"
+        file_name = f"regionals_{current_date}.json"
         output_path = os.path.join("data", "raw", file_name)
         
         with open(output_path, "w", encoding="utf-8") as f:

@@ -1,9 +1,9 @@
-# arquivo com variáveis de credencial
 .env
 
 __pycache__/
 *.pyc
 
-# pastas com dados
 data/raw/
 data/processed/
+
+logs/

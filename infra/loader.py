@@ -1,5 +1,9 @@
 import json
 import pandas as pd
+from infra.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 def load_raw_to_dataframe(entity: str) -> pd.DataFrame:
     """Loads the most recent raw JSON file for a given entity into a DataFrame."""
@@ -14,5 +18,5 @@ def load_raw_to_dataframe(entity: str) -> pd.DataFrame:
         data = json.load(f)
 
     df = pd.DataFrame(data)
-    print(f"✅ '{file_name}' loaded: {len(df)} rows | {len(df.columns)} columns")
+    logger.info(f"{file_name} loaded: {len(df)} rows | {len(df.columns)} columns")
     return df

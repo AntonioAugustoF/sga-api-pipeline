@@ -1,8 +1,11 @@
 import requests
 from infra.config import config
+from infra.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 def authenticate_user():
-    """Authenticates the user against the system API and returns the user token."""
     url = f"{config.API_BASE_URL}/usuario/autenticar"
     headers = {
         "Content-Type": "application/json",
@@ -15,6 +18,7 @@ def authenticate_user():
     
     response = requests.post(url, headers=headers, json=payload, timeout=30)
     response.raise_for_status()
-    print("Status code:", response.status_code)
-    print("Resposta bruta:", response.text)
+    
+    logger.info(f"Authentication successful. Status code: {response.status_code}")
+
     return response.json()["token_usuario"]

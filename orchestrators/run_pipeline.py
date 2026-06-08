@@ -15,37 +15,29 @@ from transform.transform_vehicles import transform as transform_vehicles
 
 from load.load_dimensions import run_dimensions_load
 
+from infra.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 def run_pipeline():
-    print(f"🚀 [{datetime.now()}] Starting full pipeline...\n")
+    logger.info("Starting full pipeline...")
 
-    # 1. Extract
-    print("═" * 50)
-    print("📥 EXTRACT")
-    print("═" * 50)
     run_volunteer_extraction()
     run_cooperative_extraction()
     run_regional_extraction()
     run_customer_extraction()
     run_vehicle_extraction()
 
-    # 2. Transform
-    print("\n" + "═" * 50)
-    print("⚙️  TRANSFORM")
-    print("═" * 50)
     transform_volunteers()
     transform_cooperatives()
     transform_regionals()
     transform_customers()
     transform_vehicles()
 
-    # 3. Load
-    print("\n" + "═" * 50)
-    print("📤 LOAD")
-    print("═" * 50)
     run_dimensions_load()
 
-    print(f"\n✅ [{datetime.now()}] Pipeline finished successfully.")
+    logger.info("Pipeline finished successfully.")
 
 
 if __name__ == "__main__":

@@ -4,9 +4,12 @@ import pandas as pd
 from infra.loader import load_raw_to_dataframe
 from infra.config import config
 from infra.authenticator import authenticate_user
+from infra.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 def get_status_lookup(user_token) -> dict:
-    """Returns a dict mapping codigo_situacao -> descricao_situacao."""
     url = f"{config.API_BASE_URL}/listar/situacao/todos"
     headers = {"Authorization": f"Bearer {user_token}"}
     response = requests.get(url, headers=headers, timeout=30)
@@ -25,7 +28,6 @@ def transform() -> tuple[pd.DataFrame, pd.DataFrame]:
     df["campos_opcionais"] = df["campos_opcionais"].astype(str)
     df = df.dropna(how="all")
 
-    # Build history DataFrame
     user_token = authenticate_user()
     status_lookup = get_status_lookup(user_token)
 
@@ -33,18 +35,17 @@ def transform() -> tuple[pd.DataFrame, pd.DataFrame]:
     df_history["descricao_situacao"] = df_history["codigo_situacao"].map(status_lookup)
     df_history["data_extracao"] = pd.Timestamp.now().date()
 
-    # Save to processed/
     current_date = pd.Timestamp.now().strftime("%Y-%m-%d")
     output_path = os.path.join("data", "processed", f"customers_{current_date}.parquet")
     df.to_parquet(output_path, index=False)
 
-    print(f"✅ Customers transformed: {len(df)} rows")
-    print(f"💾 File successfully saved to: {output_path}")
+    logger.info(f"Customers transformed: {len(df)} rows")
+    logger.info(f"File successfully saved to: {output_path}")
     return df, df_history
 
 
 if __name__ == "__main__":
     df, df_history = transform()
-    print(df.head())
-    print(df.dtypes)
-    print(df_history.head())
+    logger.info(df.head().to_string())
+    logger.info(df.dtypes.to_string())
+    logger.info(df_history.head().to_string())

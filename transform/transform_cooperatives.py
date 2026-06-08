@@ -1,6 +1,10 @@
 import os
 import pandas as pd
 from infra.loader import load_raw_to_dataframe
+from infra.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 def transform() -> pd.DataFrame:
     df = load_raw_to_dataframe("cooperatives")
@@ -15,11 +19,11 @@ def transform() -> pd.DataFrame:
     output_path = os.path.join("data", "processed", f"cooperatives_{current_date}.parquet")
     df.to_parquet(output_path, index=False)
 
-    print(f"✅ Cooperatives transformed: {len(df)} rows")
-    print(f"💾 File successfully saved to: {output_path}")
+    logger.info(f"Cooperatives transformed: {len(df)} rows")
+    logger.info(f"File successfully saved to: {output_path}")
     return df
 
 if __name__ == "__main__":
     df = transform()
-    print(df.head())
-    print(df.dtypes)
+    logger.info(df.head().to_string())
+    logger.info(df.dtypes.to_string())

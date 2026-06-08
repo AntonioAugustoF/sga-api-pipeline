@@ -4,9 +4,13 @@ import requests
 from datetime import datetime
 from infra.config import config
 from infra.authenticator import authenticate_user
+from infra.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 def extract_volunteers_by_status(status_name, user_token):
-    url = f"{config.API_BASE_URL}/listar/voluntario/{status_name}"  # ← status na rota
+    url = f"{config.API_BASE_URL}/listar/voluntario/{status_name}"
     
     headers = {
         "Content-Type": "application/json",
@@ -34,7 +38,7 @@ def extract_volunteers_by_status(status_name, user_token):
             volunteer["situacao_origem"] = status_name
             
         status_volunteers.extend(volunteers)
-        print(f"Status '{status_name}' | Page {current_page}: {len(volunteers)} volunteers extracted.")
+        logger.info(f"Status '{status_name}' | Page {current_page}: {len(volunteers)} volunteers extracted.")
         
         if len(volunteers) < 5000:
             break
@@ -45,14 +49,11 @@ def extract_volunteers_by_status(status_name, user_token):
 
 
 def run_volunteer_extraction():
-    """Main function to orchestrate the full volunteer extraction process."""
-    print(f"⏳ [{datetime.now()}] Starting volunteer extraction pipeline...")
+    logger.info("Starting volunteer extraction pipeline...")
     
     try:
-        # 1. Authenticate using the centralized infra module
         user_token = authenticate_user()
         
-        # 2. Iterate dynamically over both required registration statuses
         target_statuses = ["ativo", "inativo"]
         all_records = []
         
@@ -61,9 +62,8 @@ def run_volunteer_extraction():
                 records = extract_volunteers_by_status(status, user_token)
                 all_records.extend(records)
             except Exception as e:
-                print(f"⚠️ Error extracting volunteers for status {status}: {e}")
+                logger.warning(f"Error extracting volunteers for status {status}: {e}")
                 
-        # 3. Remove duplicates based on the unique identifier (e.g., 'codigo_voluntario')
         seen_volunteers = set()
         unique_volunteers = []
         
@@ -73,9 +73,8 @@ def run_volunteer_extraction():
                 seen_volunteers.add(volunteer_id)
                 unique_volunteers.append(volunteer)
                 
-        print(f"\n📊 Total extracted: {len(all_records)} | Unique: {len(unique_volunteers)}")
+        logger.info(f"Total extracted: {len(all_records)} | Unique: {len(unique_volunteers)}")
         
-        # 4. Save the raw file to the data/raw/ folder (Bronze Layer)
         current_date = datetime.now().strftime("%Y-%m-%d")
         file_name = f"volunteers_{current_date}.json"
         output_path = os.path.join("data", "raw", file_name)
@@ -83,12 +82,12 @@ def run_volunteer_extraction():
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(unique_volunteers, f, ensure_ascii=False, indent=2)
             
-        print(f"💾 File successfully saved to: {output_path}")
+        logger.info(f"File successfully saved to: {output_path}")
         return output_path
 
     except Exception as e:
-        print(f"🚨 Critical failure in the volunteer extraction pipeline: {e}")
-        return None
+        logger.error(f"Critical failure in the volunteer extraction pipeline: {e}")
+        raise
 
 
 if __name__ == "__main__":

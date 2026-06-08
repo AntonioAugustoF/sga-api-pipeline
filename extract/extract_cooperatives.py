@@ -4,6 +4,10 @@ import requests
 from datetime import datetime
 from infra.config import config
 from infra.authenticator import authenticate_user
+from infra.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 def extract_cooperatives_by_status(status_name, user_token):
     url = f"{config.API_BASE_URL}/listar/cooperativa/ativo"
@@ -34,7 +38,7 @@ def extract_cooperatives_by_status(status_name, user_token):
             cooperative["situacao_origem"] = status_name
             
         status_cooperatives.extend(cooperatives)
-        print(f"Status '{status_name}' | Page {current_page}: {len(cooperatives)} cooperatives extracted.")
+        logger.info(f"Status '{status_name}' | Page {current_page}: {len(cooperatives)} cooperatives extracted.")
         
         if len(cooperatives) < 5000:
             break
@@ -45,7 +49,7 @@ def extract_cooperatives_by_status(status_name, user_token):
 
 
 def run_cooperative_extraction():
-    print(f"⏳ [{datetime.now()}] Starting cooperative extraction pipeline...")
+    logger.info("Starting cooperative extraction pipeline...")
     
     try:
         user_token = authenticate_user()
@@ -58,7 +62,7 @@ def run_cooperative_extraction():
                 records = extract_cooperatives_by_status(status, user_token)
                 all_records.extend(records)
             except Exception as e:
-                print(f"⚠️ Error extracting cooperatives for status {status}: {e}")
+                logger.warning(f"Error extracting cooperatives for status {status}: {e}")
                 
         seen_cooperatives = set()
         unique_cooperatives = []
@@ -69,7 +73,7 @@ def run_cooperative_extraction():
                 seen_cooperatives.add(cooperative_id)
                 unique_cooperatives.append(cooperative)
                 
-        print(f"\n📊 Total extracted: {len(all_records)} | Unique: {len(unique_cooperatives)}")
+        logger.info(f"Total extracted: {len(all_records)} | Unique: {len(unique_cooperatives)}")
         
         current_date = datetime.now().strftime("%Y-%m-%d")
         file_name = f"cooperatives_{current_date}.json"
@@ -78,12 +82,12 @@ def run_cooperative_extraction():
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(unique_cooperatives, f, ensure_ascii=False, indent=2)
             
-        print(f"💾 File successfully saved to: {output_path}")
+        logger.info(f"File successfully saved to: {output_path}")
         return output_path
 
     except Exception as e:
-        print(f"🚨 Critical failure in the cooperative extraction pipeline: {e}")
-        return None
+        logger.error(f"Critical failure in the cooperative extraction pipeline: {e}")
+        raise
 
 
 if __name__ == "__main__":

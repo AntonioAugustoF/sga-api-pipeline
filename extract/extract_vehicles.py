@@ -4,10 +4,12 @@ import requests
 from datetime import datetime
 from infra.config import config
 from infra.authenticator import authenticate_user
+from infra.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def extract_vehicles_by_status(status_code, user_token):
-    """Extracts all vehicles for a specific status using pagination."""
     url = f"{config.API_BASE_URL}/listar/veiculo"
     
     headers = {
@@ -37,7 +39,6 @@ def extract_vehicles_by_status(status_code, user_token):
             break
             
         for vehicle in vehicles:
-            # Enriches the raw data with the status code context
             vehicle["codigo_situacao"] = status_code
             
         status_vehicles.extend(vehicles)
@@ -46,19 +47,16 @@ def extract_vehicles_by_status(status_code, user_token):
         if len(vehicles) < 1000 or len(status_vehicles) >= total_vehicles:
             break
             
-    print(f"Status {status_code}: {len(status_vehicles)} vehicles extracted.")
+    logger.info(f"Status {status_code}: {len(status_vehicles)} vehicles extracted.")
     return status_vehicles
 
 
 def run_vehicle_extraction():
-    """Main function to orchestrate the full vehicle extraction process."""
-    print(f"⏳ [{datetime.now()}] Starting vehicle extraction pipeline...")
+    logger.info("Starting vehicle extraction pipeline...")
     
     try:
-        # 1. Authenticate to get the user token
         user_token = authenticate_user()
         
-        # 2. Fetch all dynamic statuses
         url_statuses = f"{config.API_BASE_URL}/listar/situacao/todos"
         headers = {
             "Content-Type": "application/json",
@@ -70,18 +68,16 @@ def run_vehicle_extraction():
         statuses_data = response.json()
         
         status_list = [s["codigo_situacao"] for s in statuses_data]
-        print(f"📌 Statuses found to extract: {status_list}")
+        logger.info(f"Statuses found to extract: {status_list}")
         
-        # 3. Loop through statuses to gather all records
         all_records = []
         for status in status_list:
             try:
                 records = extract_vehicles_by_status(status, user_token)
                 all_records.extend(records)
             except Exception as e:
-                print(f"⚠️ Error extracting status {status}: {e}")
+                logger.warning(f"Error extracting status {status}: {e}")
                 
-        # 4. Remove duplicates based on 'codigo_veiculo'
         seen_vehicles = set()
         unique_vehicles = []
         
@@ -91,9 +87,8 @@ def run_vehicle_extraction():
                 seen_vehicles.add(vehicle_id)
                 unique_vehicles.append(vehicle)
                 
-        print(f"\n📊 Total extracted: {len(all_records)} | Unique: {len(unique_vehicles)}")
+        logger.info(f"Total extracted: {len(all_records)} | Unique: {len(unique_vehicles)}")
         
-        # 5. Save the raw file to the data/ folder (Staging area)
         current_date = datetime.now().strftime("%Y-%m-%d")
         file_name = f"vehicles_{current_date}.json"
         output_path = os.path.join("data", "raw", file_name)
@@ -101,11 +96,11 @@ def run_vehicle_extraction():
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(unique_vehicles, f, ensure_ascii=False, indent=2)
             
-        print(f"💾 File successfully saved to: {output_path}")
+        logger.info(f"File successfully saved to: {output_path}")
         return output_path
 
     except Exception as e:
-        print(f"🚨 Critical failure in the extraction pipeline: {e}")
+        logger.error(f"Critical failure in the vehicle extraction pipeline: {e}")
         raise
 
 

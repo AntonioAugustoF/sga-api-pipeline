@@ -4,6 +4,10 @@ import requests
 from datetime import datetime
 from infra.config import config
 from infra.authenticator import authenticate_user
+from infra.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 def extract_regionals_by_status(status_name, user_token):
     url = f"{config.API_BASE_URL}/listar/regional/ativo"
@@ -34,7 +38,7 @@ def extract_regionals_by_status(status_name, user_token):
             regional["situacao_origem"] = status_name
             
         status_regionals.extend(regionals)
-        print(f"Status '{status_name}' | Page {current_page}: {len(regionals)} regionals extracted.")
+        logger.info(f"Status '{status_name}' | Page {current_page}: {len(regionals)} regionals extracted.")
         
         if len(regionals) < 5000:
             break
@@ -45,7 +49,7 @@ def extract_regionals_by_status(status_name, user_token):
 
 
 def run_regional_extraction():
-    print(f"⏳ [{datetime.now()}] Starting regional extraction pipeline...")
+    logger.info("Starting regional extraction pipeline...")
     
     try:
         user_token = authenticate_user()
@@ -58,7 +62,7 @@ def run_regional_extraction():
                 records = extract_regionals_by_status(status, user_token)
                 all_records.extend(records)
             except Exception as e:
-                print(f"⚠️ Error extracting regionals for status {status}: {e}")
+                logger.warning(f"Error extracting regionals for status {status}: {e}")
                 
         seen_regionals = set()
         unique_regionals = []
@@ -69,7 +73,7 @@ def run_regional_extraction():
                 seen_regionals.add(regional_id)
                 unique_regionals.append(regional)
                 
-        print(f"\n📊 Total extracted: {len(all_records)} | Unique: {len(unique_regionals)}")
+        logger.info(f"Total extracted: {len(all_records)} | Unique: {len(unique_regionals)}")
         
         current_date = datetime.now().strftime("%Y-%m-%d")
         file_name = f"regionals_{current_date}.json"
@@ -78,12 +82,12 @@ def run_regional_extraction():
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(unique_regionals, f, ensure_ascii=False, indent=2)
             
-        print(f"💾 File successfully saved to: {output_path}")
+        logger.info(f"File successfully saved to: {output_path}")
         return output_path
 
     except Exception as e:
-        print(f"🚨 Critical failure in the regional extraction pipeline: {e}")
-        return None
+        logger.error(f"Critical failure in the regional extraction pipeline: {e}")
+        raise
 
 
 if __name__ == "__main__":

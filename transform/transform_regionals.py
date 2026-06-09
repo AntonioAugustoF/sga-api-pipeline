@@ -19,8 +19,8 @@ def transform() -> pd.DataFrame:
     output_path = os.path.join("data", "processed", f"regionals_{current_date}.parquet")
     df.to_parquet(output_path, index=False)
 
-    logger.info(f"✅ Regionals transformed: {len(df)} rows")
-    logger.info(f"💾 File successfully saved to: {output_path}")
+    logger.info(f"Regionals transformed: {len(df)} rows")
+    logger.info(f"File successfully saved to: {output_path}")
     return df
 
 if __name__ == "__main__":

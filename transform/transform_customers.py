@@ -5,14 +5,41 @@ from infra.loader import load_raw_to_dataframe
 from infra.config import config
 from infra.authenticator import authenticate_user
 from infra.logger import get_logger
+from infra.transformations import (
+    rename_columns,
+    remove_duplicates,
+    remove_empty_rows,
+    cast_string_columns,
+    cast_date_columns,
+)
 
 logger = get_logger(__name__)
+
+STR_COLS = [
+    "codigo_associado", "codigo_situacao", "nome", "sexo", "tipo_pessoa",
+    "rg_associado", "cnh", "categoria_cnh",
+    "dia_vencimento", "cpf", "ddd", "telefone", "codigo_profissao",
+    "codigo_classificacao", "ddd_celular", "telefone_celular", "email",
+    "cep", "logradouro", "numero", "complemento", "bairro",
+    "cidade", "estado", "codigo_regional", "codigo_cooperativa",
+    "codigo_voluntario"
+]
+
+DATE_COLS = [
+    "data_nascimento", "data_vencimento_habilitacao",
+    "data_cadastro_associado", "data_contrato_associado"
+]
+
+COLS_TO_DROP = ["radio", "radio2", "hora_contrato_associado", "orgao_expedidor_rg",
+    "data_expedicao_rg", "email_auxiliar", "pontos", "opcoes_notificacao", "campos_opcionais",
+    "ddd_celular_aux", "telefone_celular_aux", "ddd_comercial", "telefone_comercial",
+]
 
 
 def get_status_lookup(user_token) -> dict:
     url = f"{config.API_BASE_URL}/listar/situacao/todos"
     headers = {"Authorization": f"Bearer {user_token}"}
-    response = requests.get(url, headers=headers, timeout=30)
+    response = requests.get(url, headers=headers, timeout=60)
     response.raise_for_status()
     data = response.json()
     return {str(s["codigo_situacao"]): s["descricao_situacao"] for s in data}
@@ -20,13 +47,12 @@ def get_status_lookup(user_token) -> dict:
 
 def transform() -> tuple[pd.DataFrame, pd.DataFrame]:
     df = load_raw_to_dataframe("customers")
-
-    df.columns = df.columns.str.lower().str.strip()
-    df["codigo_situacao"] = df["codigo_situacao"].astype(str).str.strip()
-    df = df.drop_duplicates(subset=["codigo_associado"])
-    df["opcoes_notificacao"] = df["opcoes_notificacao"].astype(str)
-    df["campos_opcionais"] = df["campos_opcionais"].astype(str)
-    df = df.dropna(how="all")
+    df = rename_columns(df)
+    df = df.drop(columns=COLS_TO_DROP, errors="ignore")
+    df = cast_string_columns(df, STR_COLS)
+    df = cast_date_columns(df, DATE_COLS)
+    df = remove_duplicates(df, subset=["codigo_associado"])
+    df = remove_empty_rows(df)
 
     user_token = authenticate_user()
     status_lookup = get_status_lookup(user_token)

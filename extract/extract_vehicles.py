@@ -27,7 +27,7 @@ def extract_vehicles_by_status(status_code, user_token):
     total_vehicles = None
     
     while True:
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        response = requests.post(url, headers=headers, json=payload, timeout=60)
         response.raise_for_status()
         data = response.json()
         
@@ -63,7 +63,7 @@ def run_vehicle_extraction():
             "Authorization": f"Bearer {user_token}"
         }
         
-        response = requests.get(url_statuses, headers=headers, timeout=30)
+        response = requests.get(url_statuses, headers=headers, timeout=60)
         response.raise_for_status()
         statuses_data = response.json()
         

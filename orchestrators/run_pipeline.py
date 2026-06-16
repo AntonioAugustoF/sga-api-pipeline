@@ -14,6 +14,7 @@ from transform.transform_customers import transform as transform_customers
 from transform.transform_vehicles import transform as transform_vehicles
 
 from load.load_dimensions import run_dimensions_load
+from load.load_facts import run_facts_load
 
 from infra.logger import get_logger
 
@@ -36,6 +37,7 @@ def run_pipeline():
     transform_vehicles()
 
     run_dimensions_load()
+    run_facts_load()
 
     logger.info("Pipeline finished successfully.")
 

@@ -75,6 +75,11 @@ def run_vehicle_extraction():
             try:
                 records = extract_vehicles_by_status(status, user_token)
                 all_records.extend(records)
+            except requests.HTTPError as e:
+                if e.response is not None and e.response.status_code == 406:
+                    logger.info(f"Status {status} not supported by /veiculo (406) — skipping.")
+                else:
+                    logger.warning(f"HTTP error extracting status {status}: {e}")
             except Exception as e:
                 logger.warning(f"Error extracting status {status}: {e}")
                 

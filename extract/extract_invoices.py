@@ -81,6 +81,11 @@ def _extract_for_all_statuses(user_token, status_list, date_filters: dict, label
             records = _fetch_by_status(status, user_token, date_filters)
             logger.info(f"[{label}] Status {status}: {len(records)} invoices extracted total.")
             all_records.extend(records)
+        except requests.HTTPError as e:
+            if e.response is not None and e.response.status_code == 406:
+                logger.info(f"[{label}] Status {status} not supported by /boleto (406) — skipping.")
+            else:
+                logger.warning(f"[{label}] HTTP error extracting status {status}: {e}")
         except Exception as e:
             logger.warning(f"[{label}] Error extracting status {status}: {e}")
     return all_records

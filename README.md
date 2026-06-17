@@ -49,6 +49,8 @@ sga-api-pipeline/
 
 The modules inside the `/extract` folder are responsible for connecting to the SGA API. They fetch data in paginated batches across all available statuses, ensuring connection security through environment variables (`.env`). Raw data is saved as JSON files in `data/raw/`.
 
+Invoices use a multi-window incremental strategy (by emission, payment, and due date) to capture new and recently changed records. Delinquency uses a full-history extract — querying only `status=2` (open) with no date filter — to ensure no overdue invoice is missed regardless of when it was issued.
+
 ### Data Transformation
 
 Inside the `/transform` folder, data undergoes rigorous cleaning and structuring:
@@ -62,7 +64,13 @@ Cleaned data is saved as Parquet files in `data/processed/`.
 
 ### Data Load
 
-The `/load` folder safely writes processed data into PostgreSQL. It uses a `replace` strategy for dimension tables (always reflecting the current state) and an `append` strategy for history tables (ensuring historical persistence).
+The `/load` folder safely writes processed data into PostgreSQL using three strategies:
+
+| Strategy | Tables | Behavior |
+|---|---|---|
+| Replace | Dimension tables | Always reflects current state |
+| Upsert | `fact_invoices` | Inserts new records; updates existing ones by `codigo_boleto` |
+| Snapshot append | `fact_delinquency_snapshot` | Appends a dated slice of open invoices daily; re-runs on the same day are idempotent (previous slice is replaced) |
 
 ### Infrastructure & Orchestration
 
@@ -74,13 +82,15 @@ The `/load` folder safely writes processed data into PostgreSQL. It uses a `repl
 
 ## Entities
 
-| Entity | Table | History Table |
+| Entity | Table | Notes |
 |---|---|---|
 | Volunteers | `dim_volunteers` | — |
 | Cooperatives | `dim_cooperatives` | — |
 | Regionals | `dim_regionals` | — |
-| Customers | `dim_customers` | `dim_customers_history` |
-| Vehicles | `dim_vehicles` | `dim_vehicles_history` |
+| Customers | `dim_customers` | History tracked in `dim_customers_history` |
+| Vehicles | `dim_vehicles` | History tracked in `dim_vehicles_history` |
+| Invoices | `fact_invoices` | Incremental upsert; multi-window extraction |
+| Delinquency | `fact_delinquency_snapshot` | Daily snapshot of all open invoices (`status=2`) |
 
 ---
 
@@ -114,6 +124,9 @@ Configure your environment variables — create a `.env` file in the root direct
 
 ```env
 API_BASE_URL=https://your-api-url.com
+API_KEY=your_api_key
+SYSTEM_USER=your_system_user
+SYSTEM_PASSWORD=your_system_password
 DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=your_database

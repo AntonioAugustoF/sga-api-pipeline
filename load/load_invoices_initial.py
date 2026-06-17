@@ -1,4 +1,5 @@
 import pandas as pd
+import requests
 from datetime import datetime, timedelta
 from infra.authenticator import authenticate_user
 from infra.logger import get_logger
@@ -58,8 +59,13 @@ def run_initial_load():
                 records = _fetch_by_status(status, user_token, filters)
                 for record in records:
                     merged[record.get("codigo_boleto")] = record
+            except requests.HTTPError as e:
+                if e.response is not None and e.response.status_code == 406:
+                    logger.info(f"[{label}] Status {status} not supported by /boleto (406) — skipping.")
+                else:
+                    logger.warning(f"[{label}] HTTP error extracting status {status}: {e}")
             except Exception as e:
-                logger.warning(f"[{label}] Status {status}: {e}")
+                logger.warning(f"[{label}] Error extracting status {status}: {e}")
 
     logger.info(f"Total unique invoices extracted: {len(merged)}")
 

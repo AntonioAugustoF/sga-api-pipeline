@@ -41,6 +41,7 @@ def _fetch_by_status(status_code, user_token, date_filters: dict) -> list:
 
     all_boletos = []
     total_boletos = None
+    page_size = payload["quantidade_por_pagina"]
 
     while True:
         response = requests.post(url, headers=headers, json=payload, timeout=60)
@@ -49,8 +50,6 @@ def _fetch_by_status(status_code, user_token, date_filters: dict) -> list:
 
         if isinstance(data, list):
             boletos = data
-            if total_boletos is None:
-                total_boletos = len(data)
         else:
             if total_boletos is None:
                 total_boletos = data.get("total_boletos", 0)
@@ -68,7 +67,7 @@ def _fetch_by_status(status_code, user_token, date_filters: dict) -> list:
 
         payload["inicio_paginacao"] += 1
 
-        if len(boletos) < 1000 or len(all_boletos) >= total_boletos:
+        if len(boletos) < page_size or (total_boletos is not None and len(all_boletos) >= total_boletos):
             break
 
     return all_boletos

@@ -73,6 +73,10 @@ def transform() -> tuple[pd.DataFrame, pd.DataFrame]:
     output_path = os.path.join("data", "processed", f"vehicles_{current_date}.parquet")
     df.to_parquet(output_path, index=False)
 
+    history_dir = os.path.join("data", "processed", "history")
+    os.makedirs(history_dir, exist_ok=True)
+    df_history.to_parquet(os.path.join(history_dir, f"vehicles_{current_date}.parquet"), index=False)
+
     logger.info(f"Vehicles transformed: {len(df)} rows")
     logger.info(f"File successfully saved to: {output_path}")
     return df, df_history

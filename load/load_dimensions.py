@@ -1,17 +1,14 @@
 import os
 import glob
-from datetime import datetime
 import pandas as pd
 from infra.db_connector import get_db_engine
 from infra.logger import get_logger
-from transform.transform_vehicles import transform as transform_vehicles
-from transform.transform_customers import transform as transform_customers
 
 logger = get_logger(__name__)
 
 
-def get_latest_processed_file(entity_name):
-    search_pattern = os.path.join("data", "processed", f"{entity_name}_*.parquet")
+def get_latest_processed_file(entity_name, base_dir=os.path.join("data", "processed")):
+    search_pattern = os.path.join(base_dir, f"{entity_name}_*.parquet")
     files = glob.glob(search_pattern)
 
     if not files:
@@ -73,33 +70,41 @@ def run_dimensions_load():
         "regionals": "dim_regionals"
     }
 
+    history_dir = os.path.join("data", "processed", "history")
+    history_tables = {
+        "vehicles": "dim_vehicles_history",
+        "customers": "dim_customers_history",
+    }
+
     success_count = 0
+    failed_entities = []
 
     for entity, table in dimensions_to_load.items():
         logger.info(f"Processing load for: {entity.upper()}")
         try:
             load_entity_to_postgres(entity, table)
             success_count += 1
-        except Exception:
-            continue
+        except Exception as e:
+            logger.error(f"Failed to load entity '{entity}': {e}")
+            failed_entities.append(entity)
 
     logger.info("Processing history tables...")
 
-    try:
-        _, df_vehicles_history = transform_vehicles()
-        load_history_to_postgres(df_vehicles_history, "dim_vehicles_history")
-        success_count += 1
-    except Exception as e:
-        logger.error(f"Failed to load vehicles history: {e}")
+    for entity, table in history_tables.items():
+        try:
+            history_path = get_latest_processed_file(entity, base_dir=history_dir)
+            logger.info(f"Reading history data from: {history_path}")
+            df_history = pd.read_parquet(history_path)
+            load_history_to_postgres(df_history, table)
+            success_count += 1
+        except Exception as e:
+            logger.error(f"Failed to load {entity} history: {e}")
+            failed_entities.append(f"{entity}_history")
 
-    try:
-        _, df_customers_history = transform_customers()
-        load_history_to_postgres(df_customers_history, "dim_customers_history")
-        success_count += 1
-    except Exception as e:
-        logger.error(f"Failed to load customers history: {e}")
-
-    logger.info(f"Load finished. Successfully loaded {success_count}/{len(dimensions_to_load) + 2} tables.")
+    total_tables = len(dimensions_to_load) + len(history_tables)
+    logger.info(f"Load finished. Successfully loaded {success_count}/{total_tables} tables.")
+    if failed_entities:
+        logger.warning(f"Failed entities: {failed_entities}")
 
 
 if __name__ == "__main__":

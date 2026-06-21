@@ -28,5 +28,21 @@ class Config:
     API_BASE_URL = os.getenv("API_BASE_URL")
     API_KEY = os.getenv("API_KEY")
 
+    REQUIRED_VARS = [
+        "DB_NAME", "DB_USER", "DB_PASSWORD",
+        "SYSTEM_USER", "SYSTEM_PASSWORD",
+        "API_BASE_URL", "API_KEY",
+    ]
+
+    @classmethod
+    def validate(cls) -> None:
+        """Raises RuntimeError listing every required env var that is missing or empty."""
+        missing = [name for name in cls.REQUIRED_VARS if not getattr(cls, name)]
+        if missing:
+            raise RuntimeError(
+                f"Missing required environment variables: {', '.join(missing)}. "
+                f"Check your .env file (see .env.example)."
+            )
+
 # Instância única para ser importada e utilizada nos outros módulos
 config = Config()

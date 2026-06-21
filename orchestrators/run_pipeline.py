@@ -19,6 +19,7 @@ from load.load_dimensions import run_dimensions_load
 from load.load_facts import run_facts_load
 from load.load_delinquency_snapshot import run_delinquency_snapshot_load
 
+from infra.config import config
 from infra.logger import get_logger
 
 logger = get_logger(__name__)
@@ -26,6 +27,8 @@ logger = get_logger(__name__)
 
 def run_pipeline():
     logger.info("Starting full pipeline...")
+
+    config.validate()
 
     run_volunteer_extraction()
     run_cooperative_extraction()

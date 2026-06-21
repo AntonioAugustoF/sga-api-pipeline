@@ -56,20 +56,27 @@ def run_vehicle_extraction():
     
     try:
         user_token = authenticate_user()
-        
+        current_date = datetime.now().strftime("%Y-%m-%d")
+
         url_statuses = f"{config.API_BASE_URL}/listar/situacao/todos"
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {user_token}"
         }
-        
+
         response = requests.get(url_statuses, headers=headers, timeout=60)
         response.raise_for_status()
         statuses_data = response.json()
-        
+
         status_list = [s["codigo_situacao"] for s in statuses_data]
         logger.info(f"Statuses found to extract: {status_list}")
-        
+
+        status_lookup = {str(s["codigo_situacao"]): s["descricao_situacao"] for s in statuses_data}
+        lookup_path = os.path.join("data", "raw", f"vehicles_status_lookup_{current_date}.json")
+        with open(lookup_path, "w", encoding="utf-8") as f:
+            json.dump(status_lookup, f, ensure_ascii=False, indent=2)
+        logger.info(f"Status lookup saved to: {lookup_path}")
+
         all_records = []
         for status in status_list:
             try:
@@ -93,8 +100,7 @@ def run_vehicle_extraction():
                 unique_vehicles.append(vehicle)
                 
         logger.info(f"Total extracted: {len(all_records)} | Unique: {len(unique_vehicles)}")
-        
-        current_date = datetime.now().strftime("%Y-%m-%d")
+
         file_name = f"vehicles_{current_date}.json"
         output_path = os.path.join("data", "raw", file_name)
         

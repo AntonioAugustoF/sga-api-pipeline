@@ -17,10 +17,9 @@ def remove_empty_rows(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def cast_string_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
-    """Converts the given columns to a string type and strips whitespace and lowercases."""
-    df[columns] = df[columns].apply(
-        lambda col: col.astype(str).str.strip().str.lower()
-    )
+    """Converts the given columns to a string type and strips whitespace and lowercases, preserving nulls."""
+    for col in columns:
+        df[col] = df[col].apply(lambda x: str(x).strip().lower() if pd.notna(x) else None)
     return df
 
 

@@ -29,6 +29,48 @@ class APIFetcher:
         response.raise_for_status()
         return response
 
+    @with_retry()
+    def _post_page(self, endpoint: str, payload: dict) -> requests.Response:
+        url = f"{self._base_url}{endpoint}"
+        response = requests.post(url, headers=self._headers, json=payload, timeout=self._timeout)
+        response.raise_for_status()
+        return response
+
+    def fetch_by_offset(
+        self,
+        endpoint: str,
+        base_payload: dict,
+        offset_param: str,
+        page_size_param: str,
+        items_key: str,
+        total_key: str,
+    ) -> list[dict]:
+        """Fetches all pages of a POST endpoint paginated by an incrementing record offset."""
+        payload = {**base_payload, page_size_param: self._page_size, offset_param: 0}
+        records: list[dict] = []
+        total = None
+
+        while True:
+            response = self._post_page(endpoint, payload)
+            data = response.json()
+
+            if total is None:
+                total = data.get(total_key, 0)
+
+            items = data.get(items_key, [])
+            if not items:
+                break
+
+            records.extend(items)
+            logger.info(f"{endpoint} | Offset {payload[offset_param]}: {len(items)} records extracted.")
+
+            payload[offset_param] += self._page_size
+
+            if len(items) < self._page_size or len(records) >= total:
+                break
+
+        return records
+
     def fetch_by_page(self, endpoint: str, base_payload: dict, page_param: str, items_key: str) -> list[dict]:
         """Fetches all pages of a GET endpoint paginated by an incrementing page number."""
         page = 0

@@ -50,6 +50,44 @@ def test_fetch_by_page_handles_bare_list_response():
     assert records == [{"codigo_voluntario": 1}]
 
 
+def test_fetch_by_offset_stops_when_total_reached():
+    responses = [
+        _mock_response({"total_associados": 3, "associados": [{"codigo_associado": 1}, {"codigo_associado": 2}]}),
+        _mock_response({"total_associados": 3, "associados": [{"codigo_associado": 3}]}),
+    ]
+
+    with patch("requests.post", side_effect=responses) as mock_post:
+        fetcher = APIFetcher("http://fake", "token", page_size=2)
+        records = fetcher.fetch_by_offset(
+            "/listar/associado",
+            {"codigo_situacao": "1"},
+            "inicio_paginacao",
+            "quantidade_por_pagina",
+            "associados",
+            "total_associados",
+        )
+
+    assert [r["codigo_associado"] for r in records] == [1, 2, 3]
+    assert mock_post.call_count == 2
+
+
+def test_fetch_by_offset_stops_on_empty_page():
+    responses = [_mock_response({"total_associados": 0, "associados": []})]
+
+    with patch("requests.post", side_effect=responses):
+        fetcher = APIFetcher("http://fake", "token", page_size=1000)
+        records = fetcher.fetch_by_offset(
+            "/listar/associado",
+            {"codigo_situacao": "1"},
+            "inicio_paginacao",
+            "quantidade_por_pagina",
+            "associados",
+            "total_associados",
+        )
+
+    assert records == []
+
+
 def test_deduplicate_by_key_keeps_first_occurrence():
     records = [{"id": 1, "v": "a"}, {"id": 2, "v": "b"}, {"id": 1, "v": "c"}]
     result = deduplicate_by_key(records, "id")

@@ -4,59 +4,34 @@ import requests
 from datetime import datetime
 from infra.config import config
 from infra.authenticator import authenticate_user
+from infra.api_fetcher import APIFetcher, deduplicate_by_key
 from infra.logger import get_logger
 
 logger = get_logger(__name__)
 
 
-def extract_vehicles_by_status(status_code, user_token):
-    url = f"{config.API_BASE_URL}/listar/veiculo"
-    
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {user_token}"
-    }
-    
-    payload = {
-        "codigo_situacao": str(status_code),
-        "quantidade_por_pagina": 1000,
-        "inicio_paginacao": 0
-    }
-    
-    status_vehicles = []
-    total_vehicles = None
-    
-    while True:
-        response = requests.post(url, headers=headers, json=payload, timeout=60)
-        response.raise_for_status()
-        data = response.json()
-        
-        if total_vehicles is None:
-            total_vehicles = data.get("total_veiculos", 0)
-            
-        vehicles = data.get("veiculos", [])
-        if not vehicles:
-            break
-            
-        for vehicle in vehicles:
-            vehicle["codigo_situacao"] = status_code
-            
-        status_vehicles.extend(vehicles)
-        payload["inicio_paginacao"] += 1000
-        
-        if len(vehicles) < 1000 or len(status_vehicles) >= total_vehicles:
-            break
-            
-    logger.info(f"Status {status_code}: {len(status_vehicles)} vehicles extracted.")
-    return status_vehicles
+def extract_vehicles_by_status(status_code, fetcher: APIFetcher) -> list[dict]:
+    records = fetcher.fetch_by_offset(
+        endpoint="/listar/veiculo",
+        base_payload={"codigo_situacao": str(status_code)},
+        offset_param="inicio_paginacao",
+        page_size_param="quantidade_por_pagina",
+        items_key="veiculos",
+        total_key="total_veiculos",
+    )
+    for vehicle in records:
+        vehicle["codigo_situacao"] = status_code
+    logger.info(f"Status {status_code}: {len(records)} vehicles extracted.")
+    return records
 
 
-def run_vehicle_extraction():
+def run_vehicle_extraction() -> str:
     logger.info("Starting vehicle extraction pipeline...")
-    
+
     try:
         user_token = authenticate_user()
         current_date = datetime.now().strftime("%Y-%m-%d")
+        fetcher = APIFetcher(config.API_BASE_URL, user_token, page_size=1000, timeout=60)
 
         url_statuses = f"{config.API_BASE_URL}/listar/situacao/todos"
         headers = {
@@ -80,8 +55,7 @@ def run_vehicle_extraction():
         all_records = []
         for status in status_list:
             try:
-                records = extract_vehicles_by_status(status, user_token)
-                all_records.extend(records)
+                all_records.extend(extract_vehicles_by_status(status, fetcher))
             except requests.HTTPError as e:
                 if e.response is not None and e.response.status_code == 406:
                     logger.info(f"Status {status} not supported by /veiculo (406) — skipping.")
@@ -89,24 +63,15 @@ def run_vehicle_extraction():
                     logger.warning(f"HTTP error extracting status {status}: {e}")
             except Exception as e:
                 logger.warning(f"Error extracting status {status}: {e}")
-                
-        seen_vehicles = set()
-        unique_vehicles = []
-        
-        for vehicle in all_records:
-            vehicle_id = vehicle.get("codigo_veiculo")
-            if vehicle_id not in seen_vehicles:
-                seen_vehicles.add(vehicle_id)
-                unique_vehicles.append(vehicle)
-                
+
+        unique_vehicles = deduplicate_by_key(all_records, "codigo_veiculo")
         logger.info(f"Total extracted: {len(all_records)} | Unique: {len(unique_vehicles)}")
 
-        file_name = f"vehicles_{current_date}.json"
-        output_path = os.path.join("data", "raw", file_name)
-        
+        output_path = os.path.join("data", "raw", f"vehicles_{current_date}.json")
+
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(unique_vehicles, f, ensure_ascii=False, indent=2)
-            
+
         logger.info(f"File successfully saved to: {output_path}")
         return output_path
 

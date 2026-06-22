@@ -1,9 +1,6 @@
 import os
-import requests
 import pandas as pd
-from infra.loader import load_raw_to_dataframe
-from infra.config import config
-from infra.authenticator import authenticate_user
+from infra.loader import load_raw_to_dataframe, load_status_lookup
 from infra.logger import get_logger
 from infra.transformations import (
     rename_columns,
@@ -42,15 +39,6 @@ COLS_TO_DROP = [
 ]
 
 
-def get_status_lookup(user_token) -> dict:
-    url = f"{config.API_BASE_URL}/listar/situacao/todos"
-    headers = {"Authorization": f"Bearer {user_token}"}
-    response = requests.get(url, headers=headers, timeout=30)
-    response.raise_for_status()
-    data = response.json()
-    return {str(s["codigo_situacao"]): s["descricao_situacao"] for s in data}
-
-
 def transform() -> tuple[pd.DataFrame, pd.DataFrame]:
     df = load_raw_to_dataframe("vehicles")
     df = rename_columns(df)
@@ -62,8 +50,7 @@ def transform() -> tuple[pd.DataFrame, pd.DataFrame]:
     df = remove_duplicates(df, subset=["codigo_veiculo"])
     df = remove_empty_rows(df)
 
-    user_token = authenticate_user()
-    status_lookup = get_status_lookup(user_token)
+    status_lookup = load_status_lookup("vehicles")
 
     df_history = df[["codigo_veiculo", "codigo_situacao"]].copy()
     df_history["descricao_situacao"] = df_history["codigo_situacao"].map(status_lookup)

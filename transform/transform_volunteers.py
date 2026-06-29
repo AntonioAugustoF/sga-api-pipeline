@@ -8,6 +8,7 @@ from infra.transformations import (
     remove_empty_rows,
     cast_string_columns,
     cast_date_columns,
+    join_list_columns,
 )
 
 logger = get_logger(__name__)
@@ -15,7 +16,7 @@ logger = get_logger(__name__)
 STR_COLS = [
     "codigo_voluntario", "nome", "cpf", "cep", "telefone", "telefone_comercial",
     "celular", "email", "situacao", "codigo_classificacao", "logradouro", "numero", "complemento", "bairro",
-    "cidade", "estado", "situacao_origem", "cooperativas"
+    "cidade", "estado", "situacao_origem"
 ]
 
 DATE_COLS = ["data_cadastro", "data_nascimento"]
@@ -30,6 +31,10 @@ def transform() -> pd.DataFrame:
     df = load_raw_to_dataframe("volunteers")
     df = rename_columns(df)
     df = df.drop(columns=COLS_TO_DROP, errors="ignore")
+    df["cooperativas"] = df["cooperativas"].apply(
+        lambda x: [c.get("codigo_cooperativa") for c in x] if isinstance(x, list) else x
+    )
+    df = join_list_columns(df, ["cooperativas"])
     df = cast_string_columns(df, STR_COLS)
     df = cast_date_columns(df, DATE_COLS)
     df = remove_duplicates(df, subset=["codigo_voluntario"])

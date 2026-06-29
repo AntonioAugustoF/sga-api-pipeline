@@ -8,6 +8,8 @@ from infra.transformations import (
     cast_string_columns,
     cast_date_columns,
     cast_numeric_columns,
+    flatten_single_value_lists,
+    join_list_columns,
 )
 
 
@@ -65,3 +67,39 @@ def test_cast_numeric_columns_coerces_invalid_to_nan():
     result = cast_numeric_columns(df, ["valor"])
     assert pd.isna(result["valor"].iloc[0])
     assert result["valor"].iloc[1] == 20.0
+
+
+def test_flatten_single_value_lists_unwraps_single_element():
+    df = pd.DataFrame({"beneficiario": [[""], ["joao"]]})
+    result = flatten_single_value_lists(df, ["beneficiario"])
+    assert result["beneficiario"].tolist() == ["", "joao"]
+
+
+def test_flatten_single_value_lists_empty_list_becomes_none():
+    df = pd.DataFrame({"beneficiario": [[]]})
+    result = flatten_single_value_lists(df, ["beneficiario"])
+    assert result["beneficiario"].iloc[0] is None
+
+
+def test_flatten_single_value_lists_ignores_non_list_values():
+    df = pd.DataFrame({"beneficiario": ["joao"]})
+    result = flatten_single_value_lists(df, ["beneficiario"])
+    assert result["beneficiario"].iloc[0] == "joao"
+
+
+def test_join_list_columns_joins_multiple_elements():
+    df = pd.DataFrame({"veiculo": [["15607", "15608"]]})
+    result = join_list_columns(df, ["veiculo"])
+    assert result["veiculo"].iloc[0] == "15607,15608"
+
+
+def test_join_list_columns_single_element():
+    df = pd.DataFrame({"veiculo": [["15607"]]})
+    result = join_list_columns(df, ["veiculo"])
+    assert result["veiculo"].iloc[0] == "15607"
+
+
+def test_join_list_columns_custom_separator():
+    df = pd.DataFrame({"veiculo": [["15607", "15608"]]})
+    result = join_list_columns(df, ["veiculo"], separator="|")
+    assert result["veiculo"].iloc[0] == "15607|15608"

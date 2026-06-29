@@ -36,3 +36,17 @@ def cast_numeric_columns(df: pd.DataFrame, columns: list[str], dtype: str = "flo
     for col in columns:
         df[col] = pd.to_numeric(df[col], errors="coerce")
     return df
+
+
+def flatten_single_value_lists(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    """Unwraps single-element list columns into scalars. Empty lists become None."""
+    for col in columns:
+        df[col] = df[col].apply(lambda x: (x[0] if x else None) if isinstance(x, list) else x)
+    return df
+
+
+def join_list_columns(df: pd.DataFrame, columns: list[str], separator: str = ",") -> pd.DataFrame:
+    """Serializes multi-valued list columns into a delimited string for relational storage."""
+    for col in columns:
+        df[col] = df[col].apply(lambda x: separator.join(str(v) for v in x) if isinstance(x, list) else x)
+    return df

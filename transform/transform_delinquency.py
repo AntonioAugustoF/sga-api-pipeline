@@ -9,6 +9,8 @@ from infra.transformations import (
     cast_string_columns,
     cast_date_columns,
     cast_numeric_columns,
+    flatten_single_value_lists,
+    join_list_columns,
 )
 from transform.business_rules import calculate_days_overdue, classify_aging_bucket
 
@@ -23,7 +25,7 @@ STR_COLS = [
     "codigo_forma_pagamento", "descricao_forma_pagamento",
     "descricao_tipo_cobranca_recorrente", "codigo_tipo_boleto", "descricao_tipo_boleto",
     "codigo_conta", "codigo_banco", "nome_banco", "agencia", "conta",
-    "descricao_tipo_baixa_boleto", "veiculo", "beneficiario", "codigo_situacao",
+    "descricao_tipo_baixa_boleto", "codigo_situacao",
 ]
 
 DATE_COLS = [
@@ -40,6 +42,8 @@ NUMERIC_COLS = [
 def transform() -> pd.DataFrame:
     df = load_raw_to_dataframe("delinquency")
     df = rename_columns(df)
+    df = join_list_columns(df, ["veiculo"])
+    df = flatten_single_value_lists(df, ["beneficiario"])
     df = cast_string_columns(df, STR_COLS)
     df = cast_date_columns(df, DATE_COLS)
     df = cast_numeric_columns(df, NUMERIC_COLS)

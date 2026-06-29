@@ -5,6 +5,7 @@ from datetime import date
 from sqlalchemy import text, inspect
 from infra.db_connector import get_db_engine
 from infra.logger import get_logger
+from load.load_facts import sync_table_schema
 
 logger = get_logger(__name__)
 
@@ -38,6 +39,8 @@ def load_delinquency_snapshot():
             conn.execute(text(f'ALTER TABLE {SNAPSHOT_TABLE} ADD PRIMARY KEY ({pk_constraint})'))
             logger.info(f"Table '{SNAPSHOT_TABLE}' created with {len(df)} rows.")
             return
+
+        sync_table_schema(conn, engine, SNAPSHOT_TABLE, df)
 
         logger.info(f"Deleting existing rows for dt_referencia = {today}...")
         conn.execute(text(f"DELETE FROM {SNAPSHOT_TABLE} WHERE dt_referencia = :dt"), {"dt": today})

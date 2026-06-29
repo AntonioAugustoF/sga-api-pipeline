@@ -2,6 +2,7 @@ import os
 import glob
 import pandas as pd
 from sqlalchemy import text, inspect
+from sqlalchemy.engine import Connection, Engine
 from infra.db_connector import get_db_engine
 from infra.logger import get_logger
 
@@ -17,6 +18,32 @@ def get_latest_processed_file(entity_name: str) -> str:
     if not files:
         raise FileNotFoundError(f"No processed parquet file found for entity: {entity_name}")
     return max(files)
+
+
+def _infer_pg_type(dtype) -> str:
+    if pd.api.types.is_bool_dtype(dtype):
+        return "BOOLEAN"
+    if pd.api.types.is_integer_dtype(dtype):
+        return "BIGINT"
+    if pd.api.types.is_float_dtype(dtype):
+        return "DOUBLE PRECISION"
+    if pd.api.types.is_datetime64_any_dtype(dtype):
+        return "TIMESTAMP"
+    return "TEXT"
+
+
+def sync_table_schema(conn: Connection, engine: Engine, table_name: str, df: pd.DataFrame) -> None:
+    """Adds columns present in df but missing from table_name, preventing schema drift
+    when new business-rule columns are introduced upstream after the table already exists."""
+    existing_cols = {c["name"] for c in inspect(engine).get_columns(table_name)}
+    missing_cols = [c for c in df.columns if c not in existing_cols]
+    if not missing_cols:
+        return
+
+    logger.warning(f"Schema drift detected on '{table_name}': adding missing columns {missing_cols}")
+    for col in missing_cols:
+        pg_type = _infer_pg_type(df[col].dtype)
+        conn.execute(text(f'ALTER TABLE "{table_name}" ADD COLUMN IF NOT EXISTS "{col}" {pg_type}'))
 
 
 def upsert_to_postgres(df: pd.DataFrame, table_name: str, pk_column: str):
@@ -35,6 +62,7 @@ def upsert_to_postgres(df: pd.DataFrame, table_name: str, pk_column: str):
     updates = ", ".join(f'"{c}" = EXCLUDED."{c}"' for c in df.columns if c != pk_column)
 
     with engine.begin() as conn:
+        sync_table_schema(conn, engine, table_name, df)
         df.to_sql(temp_table, conn, if_exists="replace", index=False, chunksize=1000)
 
         conn.execute(text(f"""

@@ -9,6 +9,7 @@ from infra.transformations import (
     cast_string_columns,
     cast_date_columns,
 )
+from transform.business_rules import calculate_age
 
 logger = get_logger(__name__)
 
@@ -43,9 +44,10 @@ def transform() -> tuple[pd.DataFrame, pd.DataFrame]:
     df = remove_empty_rows(df)
 
     status_lookup = load_status_lookup("customers")
+    df["descricao_situacao"] = df["codigo_situacao"].map(status_lookup)
+    df["idade"] = calculate_age(df["data_nascimento"], pd.Timestamp.now().date())
 
-    df_history = df[["codigo_associado", "codigo_situacao"]].copy()
-    df_history["descricao_situacao"] = df_history["codigo_situacao"].map(status_lookup)
+    df_history = df[["codigo_associado", "codigo_situacao", "descricao_situacao"]].copy()
     df_history["data_extracao"] = pd.Timestamp.now().date()
 
     current_date = pd.Timestamp.now().strftime("%Y-%m-%d")

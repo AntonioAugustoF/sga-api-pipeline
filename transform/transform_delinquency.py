@@ -10,6 +10,7 @@ from infra.transformations import (
     cast_date_columns,
     cast_numeric_columns,
 )
+from transform.business_rules import calculate_days_overdue, classify_aging_bucket
 
 logger = get_logger(__name__)
 
@@ -45,7 +46,10 @@ def transform() -> pd.DataFrame:
     df = remove_duplicates(df, subset=["codigo_boleto"])
     df = remove_empty_rows(df)
 
-    df["dt_referencia"] = pd.Timestamp.now().date()
+    reference_date = pd.Timestamp.now().date()
+    df["dt_referencia"] = reference_date
+    df["dias_em_atraso"] = calculate_days_overdue(df["data_vencimento"], reference_date)
+    df["faixa_atraso"] = classify_aging_bucket(df["dias_em_atraso"])
 
     current_date = pd.Timestamp.now().strftime("%Y-%m-%d")
     output_path = os.path.join("data", "processed", f"delinquency_{current_date}.parquet")

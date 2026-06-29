@@ -10,6 +10,12 @@ from infra.transformations import (
     cast_date_columns,
     cast_numeric_columns,
 )
+from transform.business_rules import (
+    calculate_days_overdue,
+    classify_aging_bucket,
+    classify_payment_status,
+    calculate_payment_difference,
+)
 
 logger = get_logger(__name__)
 
@@ -44,6 +50,18 @@ def transform() -> pd.DataFrame:
     df = cast_numeric_columns(df, NUMERIC_COLS)
     df = remove_duplicates(df, subset=["codigo_boleto"])
     df = remove_empty_rows(df)
+
+    reference_date = pd.Timestamp.now().date()
+    df["dias_em_atraso"] = calculate_days_overdue(df["data_vencimento"], reference_date)
+    df.loc[df["pago"] == "y", "dias_em_atraso"] = None
+    df["faixa_atraso"] = classify_aging_bucket(df["dias_em_atraso"])
+
+    df["status_pagamento"] = classify_payment_status(
+        df, paid_flag_col="pago", invoice_value_col="valor_boleto", paid_value_col="valor_pagamento"
+    )
+    df["diferenca_pagamento"] = calculate_payment_difference(
+        df, invoice_value_col="valor_boleto", paid_value_col="valor_pagamento"
+    )
 
     current_date = pd.Timestamp.now().strftime("%Y-%m-%d")
     output_path = os.path.join("data", "processed", f"invoices_{current_date}.parquet")

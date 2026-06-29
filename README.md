@@ -57,20 +57,24 @@ Inside the `/transform` folder, data undergoes rigorous cleaning and structuring
 
 - Data type casting and formatting.
 - Handling missing values and duplicates.
-- Serialization of nested fields (arrays and dictionaries).
-- History tracking for entities with status changes (Customers and Vehicles).
+- Serialization of nested fields (arrays and dictionaries) into flat, relational columns.
+- Business rules (aging, payment reconciliation, age) for invoices, delinquency and customers.
 
 Cleaned data is saved as Parquet files in `data/processed/`.
 
 ### Data Load
 
-The `/load` folder safely writes processed data into PostgreSQL using three strategies:
+The `/load` folder safely writes processed data into PostgreSQL using four strategies:
 
 | Strategy | Tables | Behavior |
 |---|---|---|
-| Replace | Dimension tables | Always reflects current state |
-| Upsert | `fact_invoices` | Inserts new records; updates existing ones by `codigo_boleto` |
-| Snapshot append | `fact_delinquency_snapshot` | Appends a dated slice of open invoices daily; re-runs on the same day are idempotent (previous slice is replaced) |
+| Upsert | `dim_cooperatives`, `dim_regionals`, `dim_volunteers`, `fact_invoices` | Inserts new records; updates existing ones by natural key |
+| SCD Type 2 | `dim_customers`, `dim_vehicles` | Tracks attribute history in place via `vigente`/`valido_de`/`valido_ate`: changes to monitored columns close the current version and open a new one; other attribute changes are refreshed without versioning |
+| Daily snapshot replace | `fact_delinquency_snapshot` | Deletes and reinserts that day's slice of open invoices; re-runs on the same day are idempotent |
+
+Before every upsert or SCD2 load, the destination table's schema is reconciled against the incoming DataFrame — missing columns are added automatically (`ALTER TABLE ... ADD COLUMN`), so new business-rule columns introduced upstream never fail with `UndefinedColumn`.
+
+Dimension loads also guard against partial extractions: if the incoming row count drops more than 30% versus what is already loaded, the load is refused for that entity instead of silently shrinking the dimension.
 
 ### Infrastructure & Orchestration
 
@@ -87,8 +91,8 @@ The `/load` folder safely writes processed data into PostgreSQL using three stra
 | Volunteers | `dim_volunteers` | — |
 | Cooperatives | `dim_cooperatives` | — |
 | Regionals | `dim_regionals` | — |
-| Customers | `dim_customers` | History tracked in `dim_customers_history` |
-| Vehicles | `dim_vehicles` | History tracked in `dim_vehicles_history` |
+| Customers | `dim_customers` | SCD Type 2 — versioned in place (`vigente`/`valido_de`/`valido_ate`) |
+| Vehicles | `dim_vehicles` | SCD Type 2 — versioned in place (`vigente`/`valido_de`/`valido_ate`) |
 | Invoices | `fact_invoices` | Incremental upsert; multi-window extraction |
 | Delinquency | `fact_delinquency_snapshot` | Daily snapshot of all open invoices (`status=2`) |
 

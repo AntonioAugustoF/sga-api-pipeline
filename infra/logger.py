@@ -1,9 +1,11 @@
 import logging
 import os
-from datetime import datetime
+from logging.handlers import TimedRotatingFileHandler
+
+LOG_RETENTION_DAYS = 30
 
 def get_logger(name: str) -> logging.Logger:
-    """Returns a configured logger that writes to console and to a daily log file."""
+    """Returns a configured logger that writes to console and to a daily-rotating log file."""
 
     logger = logging.getLogger(name)
 
@@ -21,10 +23,14 @@ def get_logger(name: str) -> logging.Logger:
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
 
-    # file handler
-    current_date = datetime.now().strftime("%Y-%m-%d")
-    log_path = os.path.join("logs", f"pipeline_{current_date}.log")
-    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    # file handler: rotates at midnight, keeps only the last LOG_RETENTION_DAYS files
+    os.makedirs("logs", exist_ok=True)
+    file_handler = TimedRotatingFileHandler(
+        os.path.join("logs", "pipeline.log"),
+        when="midnight",
+        backupCount=LOG_RETENTION_DAYS,
+        encoding="utf-8",
+    )
     file_handler.setFormatter(formatter)
 
     logger.addHandler(console_handler)

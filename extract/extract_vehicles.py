@@ -46,12 +46,6 @@ def run_vehicle_extraction() -> str:
         status_list = [s["codigo_situacao"] for s in statuses_data]
         logger.info(f"Statuses found to extract: {status_list}")
 
-        status_lookup = {str(s["codigo_situacao"]): s["descricao_situacao"] for s in statuses_data}
-        lookup_path = os.path.join("data", "raw", f"vehicles_status_lookup_{current_date}.json")
-        with open(lookup_path, "w", encoding="utf-8") as f:
-            json.dump(status_lookup, f, ensure_ascii=False, indent=2)
-        logger.info(f"Status lookup saved to: {lookup_path}")
-
         all_records = []
         for status in status_list:
             try:

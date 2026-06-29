@@ -1,5 +1,6 @@
 import os
 import glob
+from datetime import date, datetime
 import pandas as pd
 from sqlalchemy import text, inspect
 from sqlalchemy.engine import Connection, Engine
@@ -20,15 +21,23 @@ def get_latest_processed_file(entity_name: str) -> str:
     return max(files)
 
 
-def _infer_pg_type(dtype) -> str:
-    if pd.api.types.is_bool_dtype(dtype):
+def _infer_pg_type(series: pd.Series) -> str:
+    if pd.api.types.is_bool_dtype(series.dtype):
         return "BOOLEAN"
-    if pd.api.types.is_integer_dtype(dtype):
+    if pd.api.types.is_integer_dtype(series.dtype):
         return "BIGINT"
-    if pd.api.types.is_float_dtype(dtype):
+    if pd.api.types.is_float_dtype(series.dtype):
         return "DOUBLE PRECISION"
-    if pd.api.types.is_datetime64_any_dtype(dtype):
+    if pd.api.types.is_datetime64_any_dtype(series.dtype):
         return "TIMESTAMP"
+
+    # cast_date_columns yields object-dtype columns of Python date/datetime instances,
+    # which the dtype checks above can't see.
+    sample = series.dropna()
+    if not sample.empty and isinstance(sample.iloc[0], datetime):
+        return "TIMESTAMP"
+    if not sample.empty and isinstance(sample.iloc[0], date):
+        return "DATE"
     return "TEXT"
 
 
@@ -42,7 +51,7 @@ def sync_table_schema(conn: Connection, engine: Engine, table_name: str, df: pd.
 
     logger.warning(f"Schema drift detected on '{table_name}': adding missing columns {missing_cols}")
     for col in missing_cols:
-        pg_type = _infer_pg_type(df[col].dtype)
+        pg_type = _infer_pg_type(df[col])
         conn.execute(text(f'ALTER TABLE "{table_name}" ADD COLUMN IF NOT EXISTS "{col}" {pg_type}'))
 
 

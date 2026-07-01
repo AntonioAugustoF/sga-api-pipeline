@@ -5,6 +5,7 @@ from datetime import date
 from sqlalchemy import text, inspect
 from infra.db_connector import get_db_engine
 from infra.logger import get_logger
+from load.load_facts import resolve_point_in_time_sk
 from load.load_facts import sync_table_schema
 
 logger = get_logger(__name__)
@@ -27,6 +28,14 @@ def load_delinquency_snapshot():
     file_path = get_latest_processed_file("delinquency")
     logger.info(f"Reading processed data from: {file_path}")
     df = pd.read_parquet(file_path)
+    df = resolve_point_in_time_sk(
+    engine, df,
+    dim_table="dim_customers",
+    dim_natural_key="codigo_associado",
+    dim_sk_col="sk_customer",
+    fact_natural_key="codigo_associado",
+    fact_date_col="data_emissao",
+    )
 
     today = date.today()
     cols = ", ".join(f'"{c}"' for c in df.columns)

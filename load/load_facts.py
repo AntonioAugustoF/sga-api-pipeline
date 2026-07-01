@@ -55,6 +55,51 @@ def sync_table_schema(conn: Connection, engine: Engine, table_name: str, df: pd.
         conn.execute(text(f'ALTER TABLE "{table_name}" ADD COLUMN IF NOT EXISTS "{col}" {pg_type}'))
 
 
+def resolve_point_in_time_sk(
+        engine: Engine,
+        df: pd.DataFrame,
+        dim_table: str,
+        dim_natural_key: str,
+        dim_sk_col: str,
+        fact_natural_key: str,
+        fact_date_col: str,
+    ) -> pd.DataFrame:
+        """
+        Adds dim_sk_col to df via a point-in-time join against a SCD2 dimension.
+        Each fact row receives the SK of the dimension version that was effective
+        on fact_date_col. Returns NULL when no match or when the dimension table
+        does not yet exist.
+        """
+        if not inspect(engine).has_table(dim_table):
+            logger.warning(
+                f"Dimension table '{dim_table}' not found; '{dim_sk_col}' will be NULL."
+            )
+            df[dim_sk_col] = None
+            return df
+        
+        with engine.connect() as conn:
+            dim_df = pd.read_sql(
+                f'SELECT "{dim_natural_key}", "{dim_sk_col}", valido_de, valido_ate FROM {dim_table}',
+                conn,
+            )
+        
+        dim_df["valido_de"] = pd.to_datetime(dim_df["valido_de"]).dt.date
+        dim_df["valido_ate"] = pd.to_datetime(dim_df["valido_ate"]).dt.date
+
+        keys = df[[fact_natural_key, fact_date_col]].copy().reset_index()
+        keys[fact_date_col] = pd.to_datetime(keys[fact_date_col]).dt.date
+
+        merged = keys.merge(dim_df, left_on=fact_natural_key, right_on=dim_natural_key, how="left")
+        mask = (merged["valido_de"] <= merged[fact_date_col]) & (
+            merged["valido_ate"].isna() | (merged["valido_ate"] > merged[fact_date_col])
+        )
+        resolved = merged[mask].drop_duplicates(subset=["index"])
+
+        df = df.copy()
+        df[dim_sk_col] = df.index.map(resolved.set_index("index")[dim_sk_col])
+        return df
+
+
 def upsert_to_postgres(df: pd.DataFrame, table_name: str, pk_column: str):
     engine = get_db_engine()
 
@@ -90,6 +135,16 @@ def run_facts_load():
         file_path = get_latest_processed_file("invoices")
         logger.info(f"Reading processed data from: {file_path}")
         df = pd.read_parquet(file_path)
+
+        engine = get_db_engine()
+        df = resolve_point_in_time_sk(
+            engine, df,
+            dim_table="dim_customers",
+            dim_natural_key="codigo_associado",
+            dim_sk_col="sk_customer",
+            fact_natural_key="codigo_associado",
+            fact_date_col="data_emissao",
+        )
 
         logger.info(f"Upserting {len(df)} rows into '{FACT_TABLE}'...")
         upsert_to_postgres(df, FACT_TABLE, PK_COLUMN)

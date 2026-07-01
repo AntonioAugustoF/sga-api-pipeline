@@ -25,6 +25,7 @@ SCD2_DIMENSIONS = {
             "codigo_situacao", "codigo_voluntario", "codigo_classificacao",
             "codigo_regional", "codigo_cooperativa",
         ],
+        "surrogate_key": "sk_customer",
     },
     "vehicles": {
         "table": "dim_vehicles",
@@ -33,6 +34,7 @@ SCD2_DIMENSIONS = {
             "codigo_situacao", "valor_fixo", "codigo_voluntario", "data_contrato",
             "codigo_classificacao", "codigo_regional", "codigo_cooperativa", "valor_fipe_protegido",
         ],
+        "surrogate_key": "sk_vehicle",
     },
 }
 
@@ -107,7 +109,8 @@ def run_dimensions_load():
             assert_no_abnormal_drop(len(df), previous_count, entity)
 
             upsert_scd2_dimension(
-                df, cfg["table"], cfg["natural_key"], cfg["monitored_columns"], reference_date
+                df, cfg["table"], cfg["natural_key"], cfg["monitored_columns"], reference_date,
+                cfg["surrogate_key"],
             )
             logger.info(f"Table '{cfg['table']}' SCD2-upserted with {len(df)} current rows.")
             success_count += 1

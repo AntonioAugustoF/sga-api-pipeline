@@ -1,4 +1,5 @@
 import pandas as pd
+from datetime import date as _date
 from sqlalchemy import text, inspect
 from infra.db_connector import get_db_engine
 from infra.logger import get_logger
@@ -13,6 +14,7 @@ def upsert_scd2_dimension(
     natural_key: str,
     monitored_columns: list[str],
     reference_date,
+    surrogate_key: str,
 ) -> None:
     """Upserts a dimension with SCD Type 2 semantics on `monitored_columns`.
 
@@ -40,10 +42,16 @@ def upsert_scd2_dimension(
         if not inspect(engine).has_table(table_name):
             logger.info(f"Table '{table_name}' not found. Creating SCD2 structure...")
             scd_df = df.copy()
-            scd_df["valido_de"] = reference_date
+            scd_df["valido_de"] = _date(1900, 1, 1)
             scd_df["valido_ate"] = None
             scd_df["vigente"] = True
             scd_df.to_sql(table_name, conn, if_exists="replace", index=False, chunksize=1000)
+            conn.execute(text(f"""
+                ALTER TABLE {table_name}
+                    ALTER COLUMN valido_de TYPE DATE USING valido_de::date,
+                    ALTER COLUMN valido_ate TYPE DATE USING valido_ate::date,
+                    ALTER COLUMN vigente    TYPE BOOLEAN USING vigente::boolean
+            """))
             conn.execute(text(
                 f'ALTER TABLE {table_name} ADD CONSTRAINT uq_{table_name}_nk_validade '
                 f'UNIQUE ("{natural_key}", valido_de)'
@@ -51,6 +59,9 @@ def upsert_scd2_dimension(
             conn.execute(text(
                 f'CREATE UNIQUE INDEX uq_{table_name}_vigente ON {table_name} ("{natural_key}") '
                 f'WHERE vigente'
+            ))
+            conn.execute(text(                                                   
+                 f'ALTER TABLE {table_name} ADD COLUMN "{surrogate_key}" SERIAL PRIMARY KEY'
             ))
             logger.info(f"Table '{table_name}' created with {len(scd_df)} current-version rows.")
             return

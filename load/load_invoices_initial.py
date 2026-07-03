@@ -2,6 +2,7 @@ import pandas as pd
 import requests
 from datetime import datetime, timedelta
 from infra.authenticator import authenticate_user
+from infra.db_connector import get_db_engine
 from infra.logger import get_logger
 from infra.transformations import (
     rename_columns,
@@ -10,9 +11,17 @@ from infra.transformations import (
     cast_string_columns,
     cast_date_columns,
     cast_numeric_columns,
+    flatten_single_value_lists,
+    join_list_columns,
 )
 from extract.extract_invoices import get_invoice_statuses, _fetch_by_status
-from load.load_facts import upsert_to_postgres, FACT_TABLE, PK_COLUMN
+from load.load_facts import upsert_to_postgres, resolve_point_in_time_sk, FACT_TABLE, PK_COLUMN
+from transform.business_rules import(
+    calculate_days_overdue,
+    classify_aging_bucket,
+    classify_payment_status,
+    calculate_payment_difference
+)
 from transform.transform_invoices import STR_COLS, DATE_COLS, NUMERIC_COLS
 
 logger = get_logger(__name__)
@@ -71,13 +80,37 @@ def run_initial_load():
 
     df = pd.DataFrame(list(merged.values()))
     df = rename_columns(df)
+    df = join_list_columns(df, ["veiculo"])                # novo
+    df = flatten_single_value_lists(df, ["beneficiario"])  # novo
     df = cast_string_columns(df, STR_COLS)
     df = cast_date_columns(df, DATE_COLS)
     df = cast_numeric_columns(df, NUMERIC_COLS)
     df = remove_duplicates(df, subset=["codigo_boleto"])
     df = remove_empty_rows(df)
 
+    reference_date = pd.Timestamp.now().date()             # novo — bloco de regras
+    df["dias_em_atraso"] = calculate_days_overdue(df["data_vencimento"], reference_date)
+    df.loc[df["pago"] == "y", "dias_em_atraso"] = None
+    df["faixa_atraso"] = classify_aging_bucket(df["dias_em_atraso"])
+    df["status_pagamento"] = classify_payment_status(
+        df, paid_flag_col="pago", invoice_value_col="valor_boleto", paid_value_col="valor_pagamento"
+    )
+    df["diferenca_pagamento"] = calculate_payment_difference(
+        df, invoice_value_col="valor_boleto", paid_value_col="valor_pagamento"
+    )
+
+
     logger.info(f"Upserting {len(df)} rows into '{FACT_TABLE}'...")
+    engine = get_db_engine()
+    df = resolve_point_in_time_sk(
+        engine, df,
+        dim_table="dim_customers",
+        dim_natural_key="codigo_associado",
+        dim_sk_col="sk_customer",
+        fact_natural_key="codigo_associado",
+        fact_date_col="data_emissao",
+    )
+
     upsert_to_postgres(df, FACT_TABLE, PK_COLUMN)
     logger.info("Initial load complete.")
 

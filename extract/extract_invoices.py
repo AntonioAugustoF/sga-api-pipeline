@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from infra.config import config
 from infra.authenticator import authenticate_user
 from infra.logger import get_logger
+from infra.retry import with_retry
 
 logger = get_logger(__name__)
 
@@ -15,14 +16,27 @@ def _fmt(dt: datetime) -> str:
     return dt.strftime(FMT)
 
 
+@with_retry()
+def _get(url: str, headers: dict) -> requests.Response:
+    response = requests.get(url, headers=headers, timeout=60)
+    response.raise_for_status()
+    return response
+
+
+@with_retry()
+def _post(url: str, headers: dict, payload: dict) -> requests.Response:
+    response = requests.post(url, headers=headers, json=payload, timeout=60)
+    response.raise_for_status()
+    return response
+
+
 def get_invoice_statuses(user_token) -> list:
     url = f"{config.API_BASE_URL}/listar/situacao-boleto/todos"
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {user_token}"
     }
-    response = requests.get(url, headers=headers, timeout=60)
-    response.raise_for_status()
+    response = _get(url, headers)
     return [s["codigo_situacaoboleto"] for s in response.json()]
 
 
@@ -44,8 +58,7 @@ def _fetch_by_status(status_code, user_token, date_filters: dict) -> list:
     page_size = payload["quantidade_por_pagina"]
 
     while True:
-        response = requests.post(url, headers=headers, json=payload, timeout=60)
-        response.raise_for_status()
+        response = _post(url, headers, payload)
         data = response.json()
 
         if isinstance(data, list):

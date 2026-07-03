@@ -2,7 +2,7 @@ import os
 import glob
 from datetime import date, datetime
 import pandas as pd
-from sqlalchemy import text, inspect
+from sqlalchemy import text, inspect, types as sa_types
 from sqlalchemy.engine import Connection, Engine
 from infra.db_connector import get_db_engine
 from infra.logger import get_logger
@@ -39,6 +39,17 @@ def _infer_pg_type(series: pd.Series) -> str:
     if not sample.empty and isinstance(sample.iloc[0], date):
         return "DATE"
     return "TEXT"
+
+
+def _infer_sa_type(series: pd.Series):
+    if pd.api.types.is_bool_dtype(series.dtype): return sa_types.Boolean()
+    if pd.api.types.is_integer_dtype(series.dtype): return sa_types.BigInteger()
+    if pd.api.types.is_float_dtype(series.dtype): return sa_types.Float()
+    if pd.api.types.is_datetime64_any_dtype(series.dtype): return sa_types.DateTime()
+    sample = series.dropna()
+    if not sample.empty and isinstance(sample.iloc[0], datetime): return sa_types.DateTime()
+    if not sample.empty and isinstance(sample.iloc[0], date): return sa_types.Date()
+    return sa_types.Text()
 
 
 def sync_table_schema(conn: Connection, engine: Engine, table_name: str, df: pd.DataFrame) -> None:
@@ -103,10 +114,12 @@ def resolve_point_in_time_sk(
 def upsert_to_postgres(df: pd.DataFrame, table_name: str, pk_column: str):
     engine = get_db_engine()
 
+    dtype_map = {col: _infer_sa_type(df[col]) for col in df.columns}
+
     if not inspect(engine).has_table(table_name):
         logger.info(f"Table '{table_name}' not found. Creating with primary key on '{pk_column}'...")
         with engine.begin() as conn:
-            df.to_sql(table_name, conn, if_exists="replace", index=False, chunksize=1000)
+            df.to_sql(table_name, conn, if_exists="replace", index=False, chunksize=1000, dtype=dtype_map)
             conn.execute(text(f'ALTER TABLE {table_name} ADD PRIMARY KEY ("{pk_column}")'))
         logger.info(f"Table '{table_name}' created.")
         return
@@ -117,7 +130,7 @@ def upsert_to_postgres(df: pd.DataFrame, table_name: str, pk_column: str):
 
     with engine.begin() as conn:
         sync_table_schema(conn, engine, table_name, df)
-        df.to_sql(temp_table, conn, if_exists="replace", index=False, chunksize=1000)
+        df.to_sql(temp_table, conn, if_exists="replace", index=False, chunksize=1000, dtype=dtype_map)
 
         conn.execute(text(f"""
             INSERT INTO {table_name} ({cols})

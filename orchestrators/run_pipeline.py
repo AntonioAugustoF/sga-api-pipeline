@@ -25,7 +25,7 @@ from infra.logger import get_logger
 
 logger = get_logger(__name__)
 
-@flow(name="sga-pipeline-diario", log_prints=True)
+@flow(name="sga-pipeline-diario")
 def run_pipeline():
     logger.info("Starting full pipeline...")
 

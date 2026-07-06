@@ -1,4 +1,5 @@
-# orchestrators/run_pipeline.py
+from prefect import flow
+
 from extract.extract_volunteers import run_volunteer_extraction
 from extract.extract_cooperatives import run_cooperative_extraction
 from extract.extract_regionals import run_regional_extraction
@@ -24,7 +25,7 @@ from infra.logger import get_logger
 
 logger = get_logger(__name__)
 
-
+@flow(name="sga-pipeline-diario", log_prints=True)
 def run_pipeline():
     logger.info("Starting full pipeline...")
 

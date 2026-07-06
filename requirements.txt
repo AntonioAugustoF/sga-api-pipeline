@@ -13,3 +13,4 @@ certifi==2025.6.15
 charset-normalizer==3.4.3
 idna==3.10
 urllib3==2.5.0
+prefect==3.7.7

@@ -45,6 +45,8 @@ def upsert_scd2_dimension(
             scd_df["valido_de"] = _date(1900, 1, 1)
             scd_df["valido_ate"] = None
             scd_df["vigente"] = True
+            scd_df["criado_em"] = pd.Timestamp.now()
+            scd_df["atualizado_em"] = pd.Timestamp.now()
             scd_df.to_sql(table_name, conn, if_exists="replace", index=False, chunksize=1000)
             conn.execute(text(f"""
                 ALTER TABLE {table_name}
@@ -67,6 +69,13 @@ def upsert_scd2_dimension(
             return
 
         sync_table_schema(conn, engine, table_name, df)
+        # criado_em/atualizado_em are stamped via NOW() in SQL below, not sourced from df,
+        # so sync_table_schema (which only compares df's columns) can't add them on its own.
+        conn.execute(text(
+            f'ALTER TABLE {table_name} '
+            f'ADD COLUMN IF NOT EXISTS criado_em TIMESTAMP, '
+            f'ADD COLUMN IF NOT EXISTS atualizado_em TIMESTAMP'
+        ))
         df.to_sql(temp_table, conn, if_exists="replace", index=False, chunksize=1000)
 
         monitored_diff = " OR ".join(f's."{c}" IS DISTINCT FROM c."{c}"' for c in monitored_columns)
@@ -86,24 +95,25 @@ def upsert_scd2_dimension(
 
         closed = conn.execute(text(f"""
             UPDATE {table_name}
-            SET vigente = false, valido_ate = :ref_date
+            SET vigente = false, valido_ate = :ref_date, atualizado_em = NOW()
             WHERE vigente AND "{natural_key}" IN ({changed_cte})
         """), {"ref_date": reference_date})
         logger.info(f"Closed {closed.rowcount} outdated version(s) in '{table_name}'.")
 
         update_set = ", ".join(f'"{c}" = EXCLUDED."{c}"' for c in attr_columns)
         inserted = conn.execute(text(f"""
-            INSERT INTO {table_name} ({target_cols_sql}, valido_de, valido_ate, vigente)
-            SELECT {select_cols_sql}, :ref_date, NULL, true
+            INSERT INTO {table_name} ({target_cols_sql}, valido_de, valido_ate, vigente, criado_em, atualizado_em)
+            SELECT {select_cols_sql}, :ref_date, NULL, true, NOW(), NOW()
             FROM "{temp_table}" t
             WHERE t."{natural_key}" IN ({changed_cte} UNION {new_keys_cte})
             ON CONFLICT ("{natural_key}", valido_de) DO UPDATE SET
-                {update_set}, vigente = true, valido_ate = NULL
+                {update_set}, vigente = true, valido_ate = NULL, atualizado_em = NOW()
         """), {"ref_date": reference_date})
         logger.info(f"Inserted/refreshed {inserted.rowcount} new version(s) into '{table_name}'.")
 
         if non_monitored:
             set_clause = ", ".join(f'"{c}" = t."{c}"' for c in non_monitored)
+            set_clause += ", atualizado_em = NOW()"
             refreshed = conn.execute(text(f"""
                 UPDATE {table_name} d
                 SET {set_clause}

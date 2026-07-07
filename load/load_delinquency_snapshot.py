@@ -36,6 +36,7 @@ def load_delinquency_snapshot():
     fact_natural_key="codigo_associado",
     fact_date_col="data_emissao",
     )
+    df["criado_em"] = pd.Timestamp.now()
 
     today = date.today()
     cols = ", ".join(f'"{c}"' for c in df.columns)

@@ -4,7 +4,7 @@ import pandas as pd
 from sqlalchemy import text, inspect
 from infra.db_connector import get_db_engine
 from infra.logger import get_logger
-from load.load_facts import upsert_to_postgres
+from load.load_facts import upsert_to_postgres, add_audit_columns
 from load.scd2 import upsert_scd2_dimension
 
 logger = get_logger(__name__)
@@ -91,7 +91,8 @@ def run_dimensions_load():
             previous_count = get_current_row_count(engine, table)
             assert_no_abnormal_drop(len(df), previous_count, entity)
 
-            upsert_to_postgres(df, table, natural_key)
+            df = add_audit_columns(df, reference_date=reference_date)
+            upsert_to_postgres(df, table, natural_key, immutable_columns=["criado_em"])
             logger.info(f"Table '{table}' upserted with {len(df)} rows.")
             success_count += 1
         except Exception as e:

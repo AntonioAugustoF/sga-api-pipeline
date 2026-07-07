@@ -19,6 +19,7 @@ from transform.transform_delinquency import transform as transform_delinquency
 from load.load_dimensions import run_dimensions_load
 from load.load_facts import run_facts_load
 from load.load_delinquency_snapshot import run_delinquency_snapshot_load
+from load.load_invoice_vehicle_bridge import run_bridge_load
 
 from infra.config import config
 from infra.logger import get_logger
@@ -49,6 +50,7 @@ def run_pipeline():
 
     run_dimensions_load()
     run_facts_load()
+    run_bridge_load()
     run_delinquency_snapshot_load()
 
     logger.info("Pipeline finished successfully.")

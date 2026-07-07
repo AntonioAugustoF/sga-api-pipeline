@@ -108,25 +108,56 @@ def resolve_point_in_time_sk(
 
         df = df.copy()
         df[dim_sk_col] = df.index.map(resolved.set_index("index")[dim_sk_col])
+        # unmatched rows produce NaN, which forces float64; cast to a nullable
+        # integer dtype so the destination column stays INTEGER, not DOUBLE PRECISION.
+        df[dim_sk_col] = df[dim_sk_col].astype("Int64")
         return df
 
 
-def upsert_to_postgres(df: pd.DataFrame, table_name: str, pk_column: str):
+def add_audit_columns(df: pd.DataFrame, reference_date, include_data_referencia: bool = True) -> pd.DataFrame:
+    """Stamps df with criado_em/atualizado_em (both set to now) and, optionally, data_referencia.
+
+    criado_em is only meant to stick on a row's first insert — upsert_to_postgres excludes it
+    from the ON CONFLICT UPDATE SET so reruns don't overwrite the original creation timestamp.
+    """
+    df = df.copy()
+    now = pd.Timestamp.now()
+    df["criado_em"] = now
+    df["atualizado_em"] = now
+    if include_data_referencia:
+        df["data_referencia"] = reference_date
+    return df
+
+
+def upsert_to_postgres(
+    df: pd.DataFrame,
+    table_name: str,
+    pk_column: str | list[str],
+    immutable_columns: list[str] | None = None,
+):
+    """Upserts df into table_name, matching on pk_column.
+
+    immutable_columns are written on first insert but excluded from the ON CONFLICT
+    UPDATE SET, so reruns never overwrite their original value (e.g. criado_em).
+    """
     engine = get_db_engine()
+    pk_cols = [pk_column] if isinstance(pk_column, str) else list(pk_column)
+    pk_cols_sql = ", ".join(f'"{c}"' for c in pk_cols)
+    frozen_cols = set(pk_cols) | set(immutable_columns or [])
 
     dtype_map = {col: _infer_sa_type(df[col]) for col in df.columns}
 
     if not inspect(engine).has_table(table_name):
-        logger.info(f"Table '{table_name}' not found. Creating with primary key on '{pk_column}'...")
+        logger.info(f"Table '{table_name}' not found. Creating with primary key on {pk_cols}...")
         with engine.begin() as conn:
             df.to_sql(table_name, conn, if_exists="replace", index=False, chunksize=1000, dtype=dtype_map)
-            conn.execute(text(f'ALTER TABLE {table_name} ADD PRIMARY KEY ("{pk_column}")'))
+            conn.execute(text(f'ALTER TABLE {table_name} ADD PRIMARY KEY ({pk_cols_sql})'))
         logger.info(f"Table '{table_name}' created.")
         return
 
     temp_table = f"_temp_{table_name}"
     cols = ", ".join(f'"{c}"' for c in df.columns)
-    updates = ", ".join(f'"{c}" = EXCLUDED."{c}"' for c in df.columns if c != pk_column)
+    updates = ", ".join(f'"{c}" = EXCLUDED."{c}"' for c in df.columns if c not in frozen_cols)
 
     with engine.begin() as conn:
         sync_table_schema(conn, engine, table_name, df)
@@ -135,7 +166,7 @@ def upsert_to_postgres(df: pd.DataFrame, table_name: str, pk_column: str):
         conn.execute(text(f"""
             INSERT INTO {table_name} ({cols})
             SELECT {cols} FROM "{temp_table}"
-            ON CONFLICT ("{pk_column}") DO UPDATE SET {updates}
+            ON CONFLICT ({pk_cols_sql}) DO UPDATE SET {updates}
         """))
 
         conn.execute(text(f'DROP TABLE IF EXISTS "{temp_table}"'))
@@ -159,8 +190,10 @@ def run_facts_load():
             fact_date_col="data_emissao",
         )
 
+        df = add_audit_columns(df, reference_date=pd.Timestamp.now().date())
+
         logger.info(f"Upserting {len(df)} rows into '{FACT_TABLE}'...")
-        upsert_to_postgres(df, FACT_TABLE, PK_COLUMN)
+        upsert_to_postgres(df, FACT_TABLE, PK_COLUMN, immutable_columns=["criado_em"])
         logger.info(f"Table '{FACT_TABLE}' successfully updated.")
 
     except Exception as e:

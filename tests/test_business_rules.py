@@ -7,6 +7,7 @@ from transform.business_rules import (
     classify_payment_status,
     calculate_payment_difference,
     calculate_age,
+    allocate_invoice_value_by_vehicle,
 )
 
 
@@ -93,3 +94,38 @@ def test_calculate_age_preserves_nulls():
     birth_dates = pd.Series([None])
     result = calculate_age(birth_dates, reference_date)
     assert result.iloc[0] is None
+
+
+def test_allocate_invoice_value_by_vehicle_single_vehicle_keeps_full_value():
+    df = pd.DataFrame({
+        "codigo_boleto": ["1"],
+        "veiculo": [["100"]],
+        "valor_boleto": [300.0],
+    })
+    result = allocate_invoice_value_by_vehicle(df, "codigo_boleto", "veiculo", "valor_boleto")
+    assert result["codigo_veiculo"].tolist() == ["100"]
+    assert result["valor_rateado"].tolist() == [300.0]
+    assert result["qtd_veiculos_boleto"].tolist() == [1]
+
+
+def test_allocate_invoice_value_by_vehicle_splits_evenly_across_vehicles():
+    df = pd.DataFrame({
+        "codigo_boleto": ["1"],
+        "veiculo": [["100", "200", "300"]],
+        "valor_boleto": [300.0],
+    })
+    result = allocate_invoice_value_by_vehicle(df, "codigo_boleto", "veiculo", "valor_boleto")
+    assert sorted(result["codigo_veiculo"].tolist()) == ["100", "200", "300"]
+    assert result["valor_rateado"].tolist() == [100.0, 100.0, 100.0]
+    assert result["qtd_veiculos_boleto"].tolist() == [3, 3, 3]
+    assert result["valor_rateado"].sum() == 300.0
+
+
+def test_allocate_invoice_value_by_vehicle_drops_boletos_without_vehicles():
+    df = pd.DataFrame({
+        "codigo_boleto": ["1"],
+        "veiculo": [[]],
+        "valor_boleto": [150.0],
+    })
+    result = allocate_invoice_value_by_vehicle(df, "codigo_boleto", "veiculo", "valor_boleto")
+    assert result.empty

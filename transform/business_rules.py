@@ -46,6 +46,27 @@ def calculate_payment_difference(df: pd.DataFrame, invoice_value_col: str, paid_
     return df[paid_value_col] - df[invoice_value_col]
 
 
+def allocate_invoice_value_by_vehicle(
+    df: pd.DataFrame, boleto_col: str, veiculo_col: str, value_col: str
+) -> pd.DataFrame:
+    """Explodes each invoice into one row per vehicle it bills, splitting value_col
+    evenly across them. An invoice tied to N vehicles yields N rows of value_col / N,
+    so SUM(valor_rateado) per boleto always reconstructs the original invoice value."""
+    bridge = df[[boleto_col, veiculo_col, value_col]].explode(veiculo_col)
+    bridge = bridge.dropna(subset=[veiculo_col])
+    bridge = bridge.drop_duplicates(subset=[boleto_col, veiculo_col])
+
+    vehicle_counts = bridge.groupby(boleto_col)[veiculo_col].transform("count")
+    bridge["qtd_veiculos_boleto"] = vehicle_counts
+    bridge["valor_rateado"] = bridge[value_col] / vehicle_counts
+
+    return (
+        bridge.drop(columns=[value_col])
+        .rename(columns={veiculo_col: "codigo_veiculo"})
+        .reset_index(drop=True)
+    )
+
+
 def calculate_age(birth_dates: pd.Series, reference_date: datetime.date) -> pd.Series:
     """Age in full years as of reference_date. Null birth dates stay null."""
     def _age(birth_date):

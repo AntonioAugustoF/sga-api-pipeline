@@ -17,6 +17,7 @@ from transform.business_rules import (
     classify_aging_bucket,
     classify_payment_status,
     calculate_payment_difference,
+    allocate_invoice_value_by_vehicle,
 )
 
 logger = get_logger(__name__)
@@ -47,7 +48,6 @@ NUMERIC_COLS = [
 def transform() -> pd.DataFrame:
     df = load_raw_to_dataframe("invoices")
     df = rename_columns(df)
-    df = join_list_columns(df, ["veiculo"])
     df = flatten_single_value_lists(df, ["beneficiario"])
     df = cast_string_columns(df, STR_COLS)
     df = cast_date_columns(df, DATE_COLS)
@@ -56,6 +56,15 @@ def transform() -> pd.DataFrame:
     df = remove_empty_rows(df)
 
     reference_date = pd.Timestamp.now().date()
+    current_date = reference_date.strftime("%Y-%m-%d")
+
+    bridge_df = allocate_invoice_value_by_vehicle(df, "codigo_boleto", "veiculo", "valor_boleto")
+    bridge_output_path = os.path.join("data", "processed", f"invoice_vehicle_bridge_{current_date}.parquet")
+    bridge_df.to_parquet(bridge_output_path, index=False)
+    logger.info(f"Invoice-vehicle bridge built: {len(bridge_df)} rows -> {bridge_output_path}")
+
+    df = join_list_columns(df, ["veiculo"])
+
     df["dias_em_atraso"] = calculate_days_overdue(df["data_vencimento"], reference_date)
     df.loc[df["pago"] == "y", "dias_em_atraso"] = None
     df["faixa_atraso"] = classify_aging_bucket(df["dias_em_atraso"])
@@ -67,7 +76,6 @@ def transform() -> pd.DataFrame:
         df, invoice_value_col="valor_boleto", paid_value_col="valor_pagamento"
     )
 
-    current_date = pd.Timestamp.now().strftime("%Y-%m-%d")
     output_path = os.path.join("data", "processed", f"invoices_{current_date}.parquet")
     df.to_parquet(output_path, index=False)
 

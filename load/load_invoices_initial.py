@@ -15,12 +15,14 @@ from infra.transformations import (
     join_list_columns,
 )
 from extract.extract_invoices import get_invoice_statuses, _fetch_by_status
-from load.load_facts import upsert_to_postgres, resolve_point_in_time_sk, FACT_TABLE, PK_COLUMN
+from load.load_facts import upsert_to_postgres, resolve_point_in_time_sk, add_audit_columns, FACT_TABLE, PK_COLUMN
+from load.load_invoice_vehicle_bridge import BRIDGE_TABLE, PK_COLUMNS as BRIDGE_PK_COLUMNS
 from transform.business_rules import(
     calculate_days_overdue,
     classify_aging_bucket,
     classify_payment_status,
-    calculate_payment_difference
+    calculate_payment_difference,
+    allocate_invoice_value_by_vehicle,
 )
 from transform.transform_invoices import STR_COLS, DATE_COLS, NUMERIC_COLS
 
@@ -80,7 +82,6 @@ def run_initial_load():
 
     df = pd.DataFrame(list(merged.values()))
     df = rename_columns(df)
-    df = join_list_columns(df, ["veiculo"])                # novo
     df = flatten_single_value_lists(df, ["beneficiario"])  # novo
     df = cast_string_columns(df, STR_COLS)
     df = cast_date_columns(df, DATE_COLS)
@@ -89,6 +90,12 @@ def run_initial_load():
     df = remove_empty_rows(df)
 
     reference_date = pd.Timestamp.now().date()             # novo — bloco de regras
+
+    bridge_df = allocate_invoice_value_by_vehicle(df, "codigo_boleto", "veiculo", "valor_boleto")
+    bridge_df = add_audit_columns(bridge_df, reference_date=reference_date)
+
+    df = join_list_columns(df, ["veiculo"])
+
     df["dias_em_atraso"] = calculate_days_overdue(df["data_vencimento"], reference_date)
     df.loc[df["pago"] == "y", "dias_em_atraso"] = None
     df["faixa_atraso"] = classify_aging_bucket(df["dias_em_atraso"])
@@ -112,6 +119,10 @@ def run_initial_load():
     )
 
     upsert_to_postgres(df, FACT_TABLE, PK_COLUMN)
+
+    logger.info(f"Upserting {len(bridge_df)} rows into '{BRIDGE_TABLE}'...")
+    upsert_to_postgres(bridge_df, BRIDGE_TABLE, BRIDGE_PK_COLUMNS, immutable_columns=["criado_em"])
+
     logger.info("Initial load complete.")
 
 

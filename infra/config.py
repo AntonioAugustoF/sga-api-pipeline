@@ -28,6 +28,11 @@ class Config:
     API_BASE_URL = os.getenv("API_BASE_URL")
     API_KEY = os.getenv("API_KEY")
 
+    # ====================================
+    # 4. ALERTAS (opcional)
+    # ====================================
+    DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
+
     REQUIRED_VARS = [
         "DB_NAME", "DB_USER", "DB_PASSWORD",
         "SYSTEM_USER", "SYSTEM_PASSWORD",

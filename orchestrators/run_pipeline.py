@@ -23,10 +23,11 @@ from load.load_invoice_vehicle_bridge import run_bridge_load
 
 from infra.config import config
 from infra.logger import get_logger
+from infra.alerts import send_failure_alert
 
 logger = get_logger(__name__)
 
-@flow(name="sga-pipeline-diario")
+@flow(name="sga-pipeline-diario", on_failure=[send_failure_alert])
 def run_pipeline():
     logger.info("Starting full pipeline...")
 

@@ -21,6 +21,7 @@ Access structured and cleaned data ready for consumption. 💪
 - [Testing & CI](#testing--ci)
 - [Prerequisites](#prerequisites)
 - [Running Project](#running-project)
+- [Running with Docker](#running-with-docker)
 - [Scheduling](#scheduling)
 - [License](#license)
 - [Contact](#contact)
@@ -44,7 +45,9 @@ sga-api-pipeline/
 ├── orchestrators/      # Prefect flow and scheduling scripts
 ├── sql/                # Hand-written analytical views
 ├── tests/              # Unit tests (pytest)
-└── transform/          # Data cleaning, processing, and business logic (Pandas)
+├── transform/          # Data cleaning, processing, and business logic (Pandas)
+├── Dockerfile          # Pipeline application image
+└── docker-compose.yml  # Full stack: pipeline + PostgreSQL
 ```
 
 ---
@@ -145,6 +148,8 @@ Software required to run the project locally:
 - Essential packages listed in `requirements.txt`
 - Environment file configured (`.env`)
 
+Alternatively, run everything with Docker (see [Running with Docker](#running-with-docker)) — only Docker, Docker Compose and a configured `.env` are required, with no local Python or PostgreSQL install.
+
 ---
 
 ## Running Project
@@ -196,6 +201,37 @@ Run the tests:
 
 ```bash
 pytest
+```
+
+---
+
+## Running with Docker
+
+The project ships with a `Dockerfile` and a `docker-compose.yml` that bring up the whole stack — the pipeline and its PostgreSQL database — reproducibly, with no local Python or PostgreSQL install required.
+
+Prerequisites: Docker and Docker Compose, plus a configured `.env` (same variables as above).
+
+Build and start the stack in the background:
+
+```bash
+docker compose up --build -d
+```
+
+This starts two services: `postgres` (PostgreSQL 18, on host port `5433` to avoid clashing with a local install on `5432`, data persisted in a named volume) and `pipeline` (the app, serving the Prefect schedule). Inside the compose network the app reaches the database at host `postgres` — Compose overrides `DB_HOST` accordingly, so the `.env` value is only used for non-Docker runs.
+
+Useful commands:
+
+```bash
+docker compose ps                    # service status
+docker compose logs -f pipeline      # follow the pipeline logs
+docker compose down                  # stop the stack (keeps the database volume)
+docker compose down -v               # stop and delete the database volume
+```
+
+The containerized database starts empty and is repopulated by the pipeline on its next run. To seed it with an existing database instead, restore a dump into the `postgres` service:
+
+```bash
+docker compose exec -T postgres psql -U "$DB_USER" -d "$DB_NAME" < your_dump.sql
 ```
 
 ---

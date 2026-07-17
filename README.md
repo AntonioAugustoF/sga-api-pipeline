@@ -8,8 +8,51 @@ Access structured and cleaned data ready for consumption. 💪
 
 ---
 
+## Architecture Overview
+
+```mermaid
+flowchart LR
+    API["SGA API<br/>(external)"]
+
+    subgraph Extract["Extract"]
+        EX["Paginated fetch<br/>retry + backoff"]
+    end
+
+    subgraph Transform["Transform (Pandas)"]
+        TR["Clean, type-cast,<br/>business rules,<br/>value allocation"]
+    end
+
+    subgraph Load["Load"]
+        LD["Upsert / SCD2 /<br/>snapshot<br/>+ point-in-time SK"]
+    end
+
+    DW[("PostgreSQL<br/>Data Warehouse<br/>star schema")]
+    BI["Power BI<br/>dashboards"]
+
+    API --> EX --> TR --> LD --> DW --> BI
+
+    RAW[/"data/raw<br/>JSON"/]
+    PROC[/"data/processed<br/>Parquet"/]
+    EX -.-> RAW -.-> TR
+    TR -.-> PROC -.-> LD
+
+    subgraph Ops["Orchestration & Observability"]
+        PF["Prefect flow<br/>daily cron 03:00"]
+        AL["Discord alert<br/>on failure"]
+        CI["GitHub Actions<br/>pytest on push"]
+    end
+
+    PF -. orchestrates .-> Extract
+    PF -. orchestrates .-> Transform
+    PF -. orchestrates .-> Load
+    PF -. on failure .-> AL
+```
+
+---
+
 ## Table of Contents
 
+- [Architecture Overview](#architecture-overview)
 - [Architecture & Folder Structure](#architecture--folder-structure)
 - [How It Works](#how-it-works)
   - [Data Extraction](#data-extraction)
@@ -93,6 +136,56 @@ Cross-cutting load guarantees:
 - **Composite & immutable keys:** `upsert_to_postgres` accepts a composite primary key (e.g. the bridge's `codigo_boleto` + `codigo_veiculo`) and a list of immutable columns to freeze on conflict.
 
 ### Data Model & Analytical Views
+
+```mermaid
+erDiagram
+    dim_customers ||--o{ fact_invoices : "sk_customer"
+    dim_customers ||--o{ fact_delinquency_snapshot : "sk_customer"
+    dim_regionals ||--o{ fact_invoices : "codigo_regional"
+    dim_cooperatives ||--o{ dim_customers : "codigo_cooperativa"
+    dim_volunteers ||--o{ dim_customers : "codigo_voluntario"
+    dim_regionals ||--o{ dim_customers : "codigo_regional"
+    fact_invoices ||--o{ bridge_invoices_vehicles : "codigo_boleto"
+    dim_vehicles ||--o{ bridge_invoices_vehicles : "codigo_veiculo"
+
+    dim_customers {
+        int sk_customer PK
+        string codigo_associado "natural key (SCD2)"
+        date valido_de
+        date valido_ate
+        bool vigente
+    }
+    dim_vehicles {
+        int sk_vehicle PK
+        string codigo_veiculo "natural key (SCD2)"
+        bool vigente
+    }
+    dim_cooperatives {
+        string codigo_cooperativa PK
+    }
+    dim_regionals {
+        string codigo_regional PK
+    }
+    dim_volunteers {
+        string codigo_voluntario PK
+    }
+    fact_invoices {
+        string codigo_boleto PK
+        int sk_customer FK "point-in-time"
+        string codigo_regional FK
+        numeric valor_boleto
+    }
+    fact_delinquency_snapshot {
+        string codigo_boleto PK
+        date dt_referencia PK
+        int sk_customer FK
+    }
+    bridge_invoices_vehicles {
+        string codigo_boleto PK
+        string codigo_veiculo PK
+        numeric valor_rateado
+    }
+```
 
 The model is a star schema with proper surrogate keys, foreign keys and indexes:
 

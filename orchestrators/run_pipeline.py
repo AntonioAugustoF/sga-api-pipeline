@@ -27,7 +27,12 @@ from infra.alerts import send_failure_alert
 
 logger = get_logger(__name__)
 
-@flow(name="sga-pipeline-diario", on_failure=[send_failure_alert])
+@flow(
+    name="sga-pipeline-diario",
+    timeout_seconds=21600,             # 6h: corta uma execução travada; acima de dias lentos legítimos
+    on_failure=[send_failure_alert],   # cobre Failed e TimedOut (ambos são tipo FAILED)
+    on_crashed=[send_failure_alert],   # cobre Crashed (processo morto, infra, etc.)
+)
 def run_pipeline():
     logger.info("Starting full pipeline...")
 

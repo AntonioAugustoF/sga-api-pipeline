@@ -138,6 +138,21 @@ def test_insert_targets_keys_without_a_current_version(dim_df, mock_db):
     assert "c.vigente" in insert, "the LEFT JOIN must consider only current versions"
 
 
+def test_new_version_starts_where_the_previous_one_ended(dim_df, mock_db):
+    """Regression: the reopened version used to start on the run date.
+
+    A key closed weeks earlier then reopened today left the days in between
+    covered by no version at all, so point-in-time lookups on those dates
+    resolved to nothing.
+    """
+    mock_engine, mock_conn = mock_db
+    sqls = _run_subsequent(dim_df, mock_conn, mock_engine)
+
+    insert = next(s for s in sqls if s.strip().upper().startswith("INSERT"))
+    assert "MAX(c.valido_ate)" in insert, "valido_de must derive from the previous version's end"
+    assert "1900-01-01" in insert, "a first-ever version must reach back to EPOCH"
+
+
 def test_temp_tables_are_dropped(dim_df, mock_db):
     mock_engine, mock_conn = mock_db
     sqls = _run_subsequent(dim_df, mock_conn, mock_engine)

@@ -7,6 +7,11 @@ from load.load_facts import sync_table_schema
 
 logger = get_logger(__name__)
 
+# "Beginning of time" for a natural key's first version. A member discovered today
+# may already have facts predating it (the source only started exposing it now), so
+# its first version must reach back far enough for those facts to resolve.
+EPOCH_DATE = "1900-01-01"
+
 
 def upsert_scd2_dimension(
     df: pd.DataFrame,
@@ -45,7 +50,7 @@ def upsert_scd2_dimension(
         if not inspect(engine).has_table(table_name):
             logger.info(f"Table '{table_name}' not found. Creating SCD2 structure...")
             scd_df = df.copy()
-            scd_df["valido_de"] = _date(1900, 1, 1)
+            scd_df["valido_de"] = _date.fromisoformat(EPOCH_DATE)
             scd_df["valido_ate"] = None
             scd_df["vigente"] = True
             scd_df["criado_em"] = pd.Timestamp.now()
@@ -112,10 +117,24 @@ def upsert_scd2_dimension(
         """), {"ref_date": reference_date})
         logger.info(f"Closed {closed.rowcount} outdated version(s) in '{table_name}'.")
 
+        # The new version starts where the previous one ended, so the timeline has no
+        # gap a point-in-time lookup could fall into. Covers the three cases at once:
+        # a version just closed above resolves to reference_date; a key stranded
+        # without a current version resolves to the day it was closed, however long
+        # ago; and a brand-new key has no previous version and starts at EPOCH, so
+        # facts predating its first appearance still resolve.
+        valido_de_sql = f"""
+            COALESCE(
+                (SELECT MAX(c.valido_ate) FROM {table_name} c
+                  WHERE c."{natural_key}" = t."{natural_key}"),
+                DATE '{EPOCH_DATE}'
+            )
+        """
+
         update_set = ", ".join(f'"{c}" = EXCLUDED."{c}"' for c in attr_columns)
         inserted = conn.execute(text(f"""
             INSERT INTO {table_name} ({target_cols_sql}, valido_de, valido_ate, vigente, criado_em, atualizado_em)
-            SELECT {select_cols_sql}, :ref_date, NULL, true, NOW(), NOW()
+            SELECT {select_cols_sql}, {valido_de_sql}, NULL, true, NOW(), NOW()
             FROM "{temp_table}" t
             WHERE t."{natural_key}" IN (
                 SELECT nk FROM "{changed_table}" UNION {missing_current_cte}

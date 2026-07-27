@@ -134,8 +134,8 @@ The `/load` folder safely writes processed data into PostgreSQL using the follow
 
 | Strategy | Tables | Behavior |
 |---|---|---|
-| Upsert | `dim_cooperatives`, `dim_regionals`, `dim_volunteers`, `fact_invoices`, `bridge_invoices_vehicles` | Inserts new records; updates existing ones by natural (or composite) key |
-| SCD Type 2 | `dim_customers`, `dim_vehicles` | Tracks attribute history in place via `vigente`/`valido_de`/`valido_ate`: changes to monitored columns close the current version and open a new one; other attribute changes are refreshed without versioning |
+| Upsert | `dim_cooperatives`, `dim_regionals`, `dim_volunteers`, `dim_status`, `dim_status_invoice`, `fact_invoices`, `bridge_invoices_vehicles` | Inserts new records; updates existing ones by natural (or composite) key |
+| SCD Type 2 | `dim_customers`, `dim_vehicles` | Tracks attribute history in place via `vigente`/`valido_de`/`valido_ate`: changes to monitored columns close the current version and open a new one; other attribute changes are refreshed without versioning. Natural keys present in the source but with no current version get one opened, so a rerun heals rows left unversioned by earlier runs |
 | Daily snapshot replace | `fact_delinquency_snapshot` | Deletes and reinserts that day's slice of open invoices; re-runs on the same day are idempotent |
 
 Cross-cutting load guarantees:
@@ -143,6 +143,7 @@ Cross-cutting load guarantees:
 - **Schema reconciliation:** before every upsert or SCD2 load, the destination table's schema is reconciled against the incoming DataFrame — missing columns are added automatically (`ALTER TABLE ... ADD COLUMN`), so new business-rule columns introduced upstream never fail with `UndefinedColumn`.
 - **Explicit typing:** each temp table is created with an explicit SQLAlchemy type map, so a column never silently lands as the wrong type (e.g. a date arriving as `TEXT`, or a nullable surrogate key drifting to `DOUBLE PRECISION`).
 - **Partial-extraction guard:** if an incoming dimension's row count drops more than 30% versus what is already loaded, the load is refused for that entity instead of silently shrinking the dimension.
+- **Status coverage guard:** the source only returns the statuses currently enabled for the API user, and a status that stops being returned is indistinguishable from one that never existed — entities in it are silently never extracted. Every load diffs the incoming status codes against the ones already in the DW and alerts on codes **added or removed**, without failing the load.
 - **Audit metadata:** rows are stamped with `criado_em`, `atualizado_em` and (where applicable) `data_referencia`. `criado_em` is immutable — excluded from the `ON CONFLICT` update — so reruns never overwrite a row's original creation timestamp.
 - **Composite & immutable keys:** `upsert_to_postgres` accepts a composite primary key (e.g. the bridge's `codigo_boleto` + `codigo_veiculo`) and a list of immutable columns to freeze on conflict.
 
@@ -157,7 +158,10 @@ erDiagram
     dim_volunteers ||--o{ dim_customers : "codigo_voluntario"
     dim_regionals ||--o{ dim_customers : "codigo_regional"
     fact_invoices ||--o{ bridge_invoices_vehicles : "codigo_boleto"
-    dim_vehicles ||--o{ bridge_invoices_vehicles : "codigo_veiculo"
+    dim_vehicles ||--o{ bridge_invoices_vehicles : "codigo_veiculo (natural key)"
+    dim_status ||--o{ dim_customers : "codigo_situacao"
+    dim_status ||--o{ dim_vehicles : "codigo_situacao"
+    dim_status_invoice ||--o{ fact_invoices : "codigo_situacao_boleto"
 
     dim_customers {
         int sk_customer PK
@@ -169,7 +173,20 @@ erDiagram
     dim_vehicles {
         int sk_vehicle PK
         string codigo_veiculo "natural key (SCD2)"
+        date valido_de
+        date valido_ate
         bool vigente
+    }
+    dim_status {
+        string codigo_situacao PK
+        string descricao_situacao
+        bool situacao_ativa
+    }
+    dim_status_invoice {
+        string codigo_situacao_boleto PK
+        string descricao_situacao_boleto
+        bool considerado_inadimplencia
+        bool pago
     }
     dim_cooperatives {
         string codigo_cooperativa PK
@@ -198,12 +215,13 @@ erDiagram
     }
 ```
 
-The model is a star schema with proper surrogate keys, foreign keys and indexes:
+The model is a star schema with surrogate keys on the SCD2 dimensions:
 
-- **Surrogate keys:** SCD2 dimensions carry a serial surrogate key (`sk_customer`, `sk_vehicle`). Because a natural key repeats across historical versions, a surrogate key is what fact tables reference to point at a *specific* version.
-- **Point-in-time attribution:** facts resolve `sk_customer` against the `dim_customers` version that was effective on the fact's own date (`data_emissao`), not the current version — so historical analysis reflects who the customer *was* at the time.
-- **Invoice-vehicle bridge:** `bridge_invoices_vehicles` resolves the many-to-many between invoices and vehicles (an invoice can bill several vehicles), carrying `qtd_veiculos_boleto` and the pro-rated `valor_rateado`.
-- **Foreign keys & indexes:** FK constraints link facts and dimensions to their referenced dimensions; join columns are indexed for BI query performance. Orphan natural keys (codes deleted upstream but still referenced historically) are handled with explicit "unknown member" placeholder rows so no fact is left unlinked.
+- **Surrogate keys:** `dim_customers` and `dim_vehicles` are SCD2 and carry a serial surrogate key (`sk_customer`, `sk_vehicle`). A natural key repeats across historical versions, so only the surrogate key identifies a *specific* version.
+- **Point-in-time attribution:** `fact_invoices` and `fact_delinquency_snapshot` resolve `sk_customer` against the `dim_customers` version effective on the fact's own date, not the current version — so historical analysis reflects who the customer *was* at the time.
+- **Invoice-vehicle bridge:** `bridge_invoices_vehicles` resolves the many-to-many between invoices and vehicles (an invoice can bill several vehicles), carrying `qtd_veiculos_boleto` and the pro-rated `valor_rateado`. It relates to `dim_vehicles` by the **natural key**, not by `sk_vehicle` — see *Known limitations* below.
+- **Reference dimensions:** `dim_status` and `dim_status_invoice` mirror the source's status lists. They are SCD1 and keyed by the natural code — small, stable reference data where a surrogate key would add a join without buying anything. `dim_status_invoice` also records `considerado_inadimplencia` and `pago`, business rules that otherwise live only in the source API.
+- **Foreign keys & indexes:** FK constraints link `fact_invoices` and `fact_delinquency_snapshot` to `dim_customers` (via `sk_customer`) and to `dim_regionals`, and link the SCD2 dimensions to `dim_volunteers`, `dim_regionals` and `dim_cooperatives`. Fact join columns (`sk_customer`, `codigo_associado`, `codigo_regional`) are indexed for BI query performance.
 
 Hand-written views in `sql/views/` support delinquency-by-vehicle analysis:
 
@@ -211,6 +229,27 @@ Hand-written views in `sql/views/` support delinquency-by-vehicle analysis:
 |---|---|---|
 | `vw_delinquency_by_vehicle_atual` | Vehicle's **current** owner (`dim_vehicles_current`) | "Who do I contact today about this delinquency?" — operational |
 | `vw_delinquency_by_vehicle_historico` | Vehicle's owner **on the snapshot date** (SCD2 point-in-time) | Historical performance by volunteer, preserving attribution even if the vehicle later changed hands |
+
+`vw_delinquency_by_vehicle_historico` resolves the vehicle version with a half-open interval
+(`dt_referencia >= valido_de AND (valido_ate IS NULL OR dt_referencia < valido_ate)`), so exactly one
+version matches even on the day a version is closed and the next one opens.
+
+#### Known limitations
+
+Documented rather than glossed over, since they shape how the model should be queried:
+
+- **The bridge relates to `dim_vehicles` by natural key, not by `sk_vehicle`.** `codigo_veiculo` repeats
+  across SCD2 versions, so joining the bridge straight to `dim_vehicles` fans out and double-counts
+  `valor_rateado`. Consumers must join through `dim_vehicles_current` (one row per vehicle) — which is
+  what the BI model does. The proper fix is to carry `sk_vehicle` on the bridge, resolved point-in-time.
+- **Revenue is attributed to the vehicle's *current* volunteer**, a consequence of the item above.
+  That is fine for portfolio management, but not for commission: moving a vehicle between volunteers
+  rewrites past rankings. Delinquency is unaffected — it has the historical view above.
+- **No "unknown member" rows.** Natural keys deleted upstream but still referenced by facts simply fail
+  to match, and the affected rows drop out of dimension-sliced analysis instead of landing in an
+  explicit bucket.
+- **`bridge_invoices_vehicles` has no FK to `dim_vehicles` and no index on `codigo_veiculo`.** A FK here
+  would surface missing vehicles as a load error rather than as silently unattributed revenue.
 
 ### Infrastructure & Orchestration
 
@@ -228,7 +267,9 @@ Hand-written views in `sql/views/` support delinquency-by-vehicle analysis:
 | Cooperatives | `dim_cooperatives` | Upsert by natural key |
 | Regionals | `dim_regionals` | Upsert by natural key |
 | Customers | `dim_customers` | SCD Type 2; surrogate key `sk_customer` |
-| Vehicles | `dim_vehicles` | SCD Type 2; surrogate key `sk_vehicle` |
+| Vehicles | `dim_vehicles` | SCD Type 2; surrogate key `sk_vehicle` (currently consumed only by `vw_delinquency_by_vehicle_historico`) |
+| Statuses | `dim_status` | Reference dimension (SCD1) for customer/vehicle statuses |
+| Invoice statuses | `dim_status_invoice` | Reference dimension (SCD1); carries `considerado_inadimplencia` and `pago` |
 | Invoices | `fact_invoices` | Incremental upsert; point-in-time `sk_customer`; multi-window extraction |
 | Invoice–Vehicle | `bridge_invoices_vehicles` | Bridge resolving the invoice↔vehicle many-to-many, with pro-rated value |
 | Delinquency | `fact_delinquency_snapshot` | Daily snapshot of all open invoices (`status=2`) |
@@ -237,7 +278,7 @@ Hand-written views in `sql/views/` support delinquency-by-vehicle analysis:
 
 ## Testing & CI
 
-Unit tests live in `/tests` and run with `pytest`. They cover the transformation helpers, business rules, the retry decorator, the API fetcher, the dimension-drop guard, and the SCD2 surrogate-key behavior — all mocked, with no dependency on a live API or database.
+Unit tests live in `/tests` and run with `pytest`. They cover the transformation helpers, business rules, the retry decorator, the API fetcher, the dimension-drop guard, the status coverage guard, and the SCD2 behavior — including a regression test ensuring a closed version always has its replacement opened — all mocked, with no dependency on a live API or database.
 
 A GitHub Actions workflow (`.github/workflows/tests.yml`) runs the full test suite on every push and pull request to `main`.
 
@@ -300,6 +341,8 @@ python -m extract.extract_volunteers
 python -m transform.transform_volunteers
 python -m load.load_dimensions
 ```
+
+Modules must be run with `python -m` **from the repository root**: imports are absolute (`from infra.config import config`), so running a file by path (`python extract/extract_volunteers.py`) puts only that file's folder on `sys.path` and fails with `ModuleNotFoundError: No module named 'infra'`.
 
 Run the tests:
 

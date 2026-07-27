@@ -1,5 +1,16 @@
 # Data Engineering Project - SGA API Pipeline
 
+[![CI](https://github.com/AntonioAugustof/sga-api-pipeline/actions/workflows/tests.yml/badge.svg)](https://github.com/AntonioAugustof/sga-api-pipeline/actions/workflows/tests.yml)
+![License](https://img.shields.io/badge/License-MIT-green)
+
+![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
+![Pandas](https://img.shields.io/badge/Pandas-data-150458?logo=pandas&logoColor=white)
+![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-ORM-D71F00?logo=sqlalchemy&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)
+![Prefect](https://img.shields.io/badge/Prefect-orchestration-024DFD?logo=prefect&logoColor=white)
+![Power BI](https://img.shields.io/badge/Power_BI-dashboards-F2C811?logo=powerbi&logoColor=black)
+
 This repository contains the implementation of a data pipeline (SGA API Pipeline) designed to extract, transform, and load data efficiently, ensuring data consistency and reliability for downstream analysis and reporting.
 
 The pipeline architecture is built using modular Python scripts and industry-standard practices for clean, scalable data engineering.

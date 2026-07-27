@@ -1,5 +1,6 @@
 from prefect import flow
 
+from extract.extract_statuses import run_status_extraction
 from extract.extract_volunteers import run_volunteer_extraction
 from extract.extract_cooperatives import run_cooperative_extraction
 from extract.extract_regionals import run_regional_extraction
@@ -8,6 +9,7 @@ from extract.extract_vehicles import run_vehicle_extraction
 from extract.extract_invoices import run_invoice_extraction
 from extract.extract_delinquency import run_delinquency_extraction
 
+from transform.transform_statuses import transform_statuses, transform_invoice_statuses
 from transform.transform_volunteers import transform as transform_volunteers
 from transform.transform_cooperatives import transform as transform_cooperatives
 from transform.transform_regionals import transform as transform_regionals
@@ -38,6 +40,7 @@ def run_pipeline():
 
     config.validate()
 
+    run_status_extraction()
     run_volunteer_extraction()
     run_cooperative_extraction()
     run_regional_extraction()
@@ -46,6 +49,8 @@ def run_pipeline():
     run_invoice_extraction()
     run_delinquency_extraction()
 
+    transform_statuses()
+    transform_invoice_statuses()
     transform_volunteers()
     transform_cooperatives()
     transform_regionals()

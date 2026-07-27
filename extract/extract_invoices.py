@@ -95,7 +95,9 @@ def _extract_for_all_statuses(user_token, status_list, date_filters: dict, label
             all_records.extend(records)
         except requests.HTTPError as e:
             if e.response is not None and e.response.status_code == 406:
-                logger.info(f"[{label}] Status {status} not supported by /boleto (406) — skipping.")
+                # The API answers 406 with "no invoices found for the given
+                # parameters": an empty result set, not an unsupported status.
+                logger.info(f"[{label}] Status {status}: no invoices found (406 empty result).")
             else:
                 logger.warning(f"[{label}] HTTP error extracting status {status}: {e}")
         except Exception as e:

@@ -28,12 +28,15 @@ def upsert_scd2_dimension(
       partial, so absence is never treated as a business change.
     - Reruns for the same reference_date update that day's version in place
       instead of duplicating it.
+    - Natural keys present in `df` but with no current version get one opened,
+      which also self-heals rows left without a current version by past runs.
     """
     engine = get_db_engine()
     attr_columns = [c for c in df.columns if c != natural_key]
     all_columns = [natural_key] + attr_columns
     non_monitored = [c for c in attr_columns if c not in monitored_columns]
     temp_table = f"_temp_{table_name}"
+    changed_table = f"_changed_{table_name}"
 
     target_cols_sql = ", ".join(f'"{c}"' for c in all_columns)
     select_cols_sql = ", ".join(f't."{c}"' for c in all_columns)
@@ -80,23 +83,32 @@ def upsert_scd2_dimension(
 
         monitored_diff = " OR ".join(f's."{c}" IS DISTINCT FROM c."{c}"' for c in monitored_columns)
 
-        changed_cte = f"""
+        # Materialized before anything is closed: the "changed" set is defined by
+        # comparing against the CURRENT version, so re-evaluating it after the
+        # UPDATE below would return nothing and the new versions would never be
+        # opened, stranding those rows with no current version at all.
+        conn.execute(text(f'DROP TABLE IF EXISTS "{changed_table}"'))
+        conn.execute(text(f"""
+            CREATE TABLE "{changed_table}" AS
             SELECT s."{natural_key}" AS nk
             FROM "{temp_table}" s
             JOIN {table_name} c ON c."{natural_key}" = s."{natural_key}" AND c.vigente
             WHERE {monitored_diff}
-        """
-        new_keys_cte = f"""
+        """))
+
+        # Keys with no CURRENT version — covers both brand-new keys and keys left
+        # stranded by the bug described above, so a rerun heals them.
+        missing_current_cte = f"""
             SELECT s."{natural_key}" AS nk
             FROM "{temp_table}" s
-            LEFT JOIN {table_name} c ON c."{natural_key}" = s."{natural_key}"
+            LEFT JOIN {table_name} c ON c."{natural_key}" = s."{natural_key}" AND c.vigente
             WHERE c."{natural_key}" IS NULL
         """
 
         closed = conn.execute(text(f"""
             UPDATE {table_name}
             SET vigente = false, valido_ate = :ref_date, atualizado_em = NOW()
-            WHERE vigente AND "{natural_key}" IN ({changed_cte})
+            WHERE vigente AND "{natural_key}" IN (SELECT nk FROM "{changed_table}")
         """), {"ref_date": reference_date})
         logger.info(f"Closed {closed.rowcount} outdated version(s) in '{table_name}'.")
 
@@ -105,7 +117,9 @@ def upsert_scd2_dimension(
             INSERT INTO {table_name} ({target_cols_sql}, valido_de, valido_ate, vigente, criado_em, atualizado_em)
             SELECT {select_cols_sql}, :ref_date, NULL, true, NOW(), NOW()
             FROM "{temp_table}" t
-            WHERE t."{natural_key}" IN ({changed_cte} UNION {new_keys_cte})
+            WHERE t."{natural_key}" IN (
+                SELECT nk FROM "{changed_table}" UNION {missing_current_cte}
+            )
             ON CONFLICT ("{natural_key}", valido_de) DO UPDATE SET
                 {update_set}, vigente = true, valido_ate = NULL, atualizado_em = NOW()
         """), {"ref_date": reference_date})
@@ -120,8 +134,9 @@ def upsert_scd2_dimension(
                 FROM "{temp_table}" t
                 WHERE d."{natural_key}" = t."{natural_key}"
                   AND d.vigente
-                  AND d."{natural_key}" NOT IN ({changed_cte})
+                  AND d."{natural_key}" NOT IN (SELECT nk FROM "{changed_table}")
             """))
             logger.info(f"Refreshed non-monitored attributes on {refreshed.rowcount} unchanged row(s).")
 
         conn.execute(text(f'DROP TABLE IF EXISTS "{temp_table}"'))
+        conn.execute(text(f'DROP TABLE IF EXISTS "{changed_table}"'))

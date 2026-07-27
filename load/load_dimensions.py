@@ -2,8 +2,10 @@ import os
 import glob
 import pandas as pd
 from sqlalchemy import text, inspect
+from sqlalchemy.engine import Engine
 from infra.db_connector import get_db_engine
 from infra.logger import get_logger
+from infra.alerts import send_status_coverage_alert
 from load.load_facts import upsert_to_postgres, add_audit_columns
 from load.scd2 import upsert_scd2_dimension
 
@@ -15,6 +17,15 @@ SIMPLE_DIMENSIONS = {
     "cooperatives": ("dim_cooperatives", "codigo_cooperativa"),
     "regionals": ("dim_regionals", "codigo_regional"),
     "volunteers": ("dim_volunteers", "codigo_voluntario"),
+    "statuses": ("dim_status", "codigo_situacao"),
+    "invoice_statuses": ("dim_status_invoice", "codigo_situacao_boleto"),
+}
+
+# Reference dimensions whose code set defines what the extractors can even see.
+# Maps the entity to its description column, used to make the alert readable.
+STATUS_DIMENSIONS = {
+    "statuses": "descricao_situacao",
+    "invoice_statuses": "descricao_situacao_boleto",
 }
 
 SCD2_DIMENSIONS = {
@@ -73,6 +84,48 @@ def assert_no_abnormal_drop(current_count, previous_count, entity_name):
         )
 
 
+def warn_on_status_coverage_change(
+    engine: Engine,
+    table_name: str,
+    key_column: str,
+    description_column: str,
+    df: pd.DataFrame,
+) -> None:
+    """Compares the incoming status codes against the ones already in the DW and alerts on any difference.
+
+    The source filters these lists by the API user's permissions, so a status the
+    user cannot see is simply absent from the response instead of raising — which
+    already caused vehicles in an unseen status to never reach dim_vehicles.
+    Never raises: a coverage change is worth a loud warning, not a failed load.
+    """
+    try:
+        if not inspect(engine).has_table(table_name):
+            logger.info(f"Table '{table_name}' not found; skipping coverage check on first load.")
+            return
+
+        with engine.connect() as conn:
+            rows = conn.execute(text(f'SELECT "{key_column}", "{description_column}" FROM {table_name}')).all()
+
+        known = {str(code): desc for code, desc in rows}
+        incoming = {str(c): d for c, d in zip(df[key_column], df[description_column])}
+
+        added = {c: d for c, d in incoming.items() if c not in known}
+        removed = {c: d for c, d in known.items() if c not in incoming}
+
+        if not added and not removed:
+            return
+
+        if added:
+            logger.warning(f"[{table_name}] New status codes from source: {added}")
+        if removed:
+            logger.warning(f"[{table_name}] Status codes missing from source: {removed}")
+
+        send_status_coverage_alert(table_name, added, removed)
+
+    except Exception as e:
+        logger.error(f"Could not run status coverage check on '{table_name}': {e}")
+
+
 def run_dimensions_load():
     logger.info("Starting Dimensions Load pipeline...")
 
@@ -90,6 +143,11 @@ def run_dimensions_load():
 
             previous_count = get_current_row_count(engine, table)
             assert_no_abnormal_drop(len(df), previous_count, entity)
+
+            if entity in STATUS_DIMENSIONS:
+                warn_on_status_coverage_change(
+                    engine, table, natural_key, STATUS_DIMENSIONS[entity], df
+                )
 
             df = add_audit_columns(df, reference_date=reference_date)
             upsert_to_postgres(df, table, natural_key, immutable_columns=["criado_em"])

@@ -52,7 +52,9 @@ def run_vehicle_extraction() -> str:
                 all_records.extend(extract_vehicles_by_status(status, fetcher))
             except requests.HTTPError as e:
                 if e.response is not None and e.response.status_code == 406:
-                    logger.info(f"Status {status} not supported by /veiculo (406) — skipping.")
+                    # The API answers 406 with "no vehicles found for the given
+                    # parameters": an empty result set, not an unsupported status.
+                    logger.info(f"Status {status}: no vehicles found (406 empty result).")
                 else:
                     logger.warning(f"HTTP error extracting status {status}: {e}")
             except Exception as e:

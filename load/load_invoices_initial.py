@@ -1,30 +1,39 @@
+from datetime import datetime, timedelta
+
 import pandas as pd
 import requests
-from datetime import datetime, timedelta
+
+from extract.extract_invoices import _fetch_by_status, get_invoice_statuses
 from infra.authenticator import authenticate_user
 from infra.db_connector import get_db_engine
 from infra.logger import get_logger
 from infra.transformations import (
-    rename_columns,
-    remove_duplicates,
-    remove_empty_rows,
-    cast_string_columns,
     cast_date_columns,
     cast_numeric_columns,
+    cast_string_columns,
     flatten_single_value_lists,
     join_list_columns,
+    remove_duplicates,
+    remove_empty_rows,
+    rename_columns,
 )
-from extract.extract_invoices import get_invoice_statuses, _fetch_by_status
-from load.load_facts import upsert_to_postgres, resolve_point_in_time_sk, add_audit_columns, FACT_TABLE, PK_COLUMN
-from load.load_invoice_vehicle_bridge import BRIDGE_TABLE, PK_COLUMNS as BRIDGE_PK_COLUMNS
-from transform.business_rules import(
+from load.load_facts import (
+    FACT_TABLE,
+    PK_COLUMN,
+    add_audit_columns,
+    resolve_point_in_time_sk,
+    upsert_to_postgres,
+)
+from load.load_invoice_vehicle_bridge import BRIDGE_TABLE
+from load.load_invoice_vehicle_bridge import PK_COLUMNS as BRIDGE_PK_COLUMNS
+from transform.business_rules import (
+    allocate_invoice_value_by_vehicle,
     calculate_days_overdue,
+    calculate_payment_difference,
     classify_aging_bucket,
     classify_payment_status,
-    calculate_payment_difference,
-    allocate_invoice_value_by_vehicle,
 )
-from transform.transform_invoices import STR_COLS, DATE_COLS, NUMERIC_COLS
+from transform.transform_invoices import DATE_COLS, NUMERIC_COLS, STR_COLS
 
 logger = get_logger(__name__)
 

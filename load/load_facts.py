@@ -1,9 +1,12 @@
-import os
 import glob
+import os
 from datetime import date, datetime
+
 import pandas as pd
-from sqlalchemy import text, inspect, types as sa_types
+from sqlalchemy import inspect, text
+from sqlalchemy import types as sa_types
 from sqlalchemy.engine import Connection, Engine
+
 from infra.db_connector import get_db_engine
 from infra.logger import get_logger
 
@@ -42,13 +45,19 @@ def _infer_pg_type(series: pd.Series) -> str:
 
 
 def _infer_sa_type(series: pd.Series):
-    if pd.api.types.is_bool_dtype(series.dtype): return sa_types.Boolean()
-    if pd.api.types.is_integer_dtype(series.dtype): return sa_types.BigInteger()
-    if pd.api.types.is_float_dtype(series.dtype): return sa_types.Float()
-    if pd.api.types.is_datetime64_any_dtype(series.dtype): return sa_types.DateTime()
+    if pd.api.types.is_bool_dtype(series.dtype):
+        return sa_types.Boolean()
+    if pd.api.types.is_integer_dtype(series.dtype):
+        return sa_types.BigInteger()
+    if pd.api.types.is_float_dtype(series.dtype):
+        return sa_types.Float()
+    if pd.api.types.is_datetime64_any_dtype(series.dtype):
+        return sa_types.DateTime()
     sample = series.dropna()
-    if not sample.empty and isinstance(sample.iloc[0], datetime): return sa_types.DateTime()
-    if not sample.empty and isinstance(sample.iloc[0], date): return sa_types.Date()
+    if not sample.empty and isinstance(sample.iloc[0], datetime):
+        return sa_types.DateTime()
+    if not sample.empty and isinstance(sample.iloc[0], date):
+        return sa_types.Date()
     return sa_types.Text()
 
 

@@ -1,10 +1,12 @@
 from contextlib import contextmanager
 from datetime import date
 from unittest.mock import MagicMock, patch
+
 import pandas as pd
 import pytest
 
 from load.scd2 import upsert_scd2_dimension
+
 
 @pytest.fixture
 def dim_df():

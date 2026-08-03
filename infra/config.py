@@ -1,4 +1,6 @@
 import os
+from typing import ClassVar
+
 from dotenv import load_dotenv
 
 # Carrega as variáveis do arquivo .env para o ambiente do Python
@@ -33,7 +35,7 @@ class Config:
     # ====================================
     DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 
-    REQUIRED_VARS = [
+    REQUIRED_VARS: ClassVar[list[str]] = [
         "DB_NAME", "DB_USER", "DB_PASSWORD",
         "SYSTEM_USER", "SYSTEM_PASSWORD",
         "API_BASE_URL", "API_KEY",

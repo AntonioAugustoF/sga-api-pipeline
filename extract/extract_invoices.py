@@ -1,9 +1,11 @@
-import os
 import json
-import requests
+import os
 from datetime import datetime, timedelta
-from infra.config import config
+
+import requests
+
 from infra.authenticator import authenticate_user
+from infra.config import config
 from infra.logger import get_logger
 from infra.retry import with_retry
 
@@ -121,7 +123,10 @@ def extract_paid_invoices(user_token, status_list) -> list:
         "data_pagamento_inicial": _fmt(today - timedelta(days=30)),
         "data_pagamento_final": _fmt(today),
     }
-    logger.info(f"[PAID] Extracting by pagamento: {filters['data_pagamento_inicial']} to {filters['data_pagamento_final']}")
+    logger.info(
+        f"[PAID] Extracting by pagamento: {filters['data_pagamento_inicial']} "
+        f"to {filters['data_pagamento_final']}"
+    )
     return _extract_for_all_statuses(user_token, status_list, filters, "PAID")
 
 
@@ -131,7 +136,10 @@ def extract_due_date_changes(user_token, status_list) -> list:
         "data_vencimento_inicial": _fmt(today - timedelta(days=30)),
         "data_vencimento_final": _fmt(today + timedelta(days=30)),
     }
-    logger.info(f"[DUE] Extracting by vencimento: {filters['data_vencimento_inicial']} to {filters['data_vencimento_final']}")
+    logger.info(
+        f"[DUE] Extracting by vencimento: {filters['data_vencimento_inicial']} "
+        f"to {filters['data_vencimento_final']}"
+    )
     return _extract_for_all_statuses(user_token, status_list, filters, "DUE")
 
 

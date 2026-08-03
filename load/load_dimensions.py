@@ -1,17 +1,21 @@
-import os
 import glob
+import os
+
 import pandas as pd
-from sqlalchemy import text, inspect
+from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
+
+from infra.alerts import send_status_coverage_alert
 from infra.db_connector import get_db_engine
 from infra.logger import get_logger
-from infra.alerts import send_status_coverage_alert
-from load.load_facts import upsert_to_postgres, add_audit_columns
+from load.load_facts import add_audit_columns, upsert_to_postgres
 from load.scd2 import upsert_scd2_dimension
 
 logger = get_logger(__name__)
 
 DROP_THRESHOLD = 0.3  # abort an entity's load if its row count falls more than 30% vs what's currently loaded
+
+PROCESSED_DIR = os.path.join("data", "processed")
 
 SIMPLE_DIMENSIONS = {
     "cooperatives": ("dim_cooperatives", "codigo_cooperativa"),
@@ -50,7 +54,7 @@ SCD2_DIMENSIONS = {
 }
 
 
-def get_latest_processed_file(entity_name, base_dir=os.path.join("data", "processed")):
+def get_latest_processed_file(entity_name, base_dir=PROCESSED_DIR):
     search_pattern = os.path.join(base_dir, f"{entity_name}_*.parquet")
     files = glob.glob(search_pattern)
 
@@ -107,7 +111,10 @@ def warn_on_status_coverage_change(
             rows = conn.execute(text(f'SELECT "{key_column}", "{description_column}" FROM {table_name}')).all()
 
         known = {str(code): desc for code, desc in rows}
-        incoming = {str(c): d for c, d in zip(df[key_column], df[description_column])}
+        incoming = {
+            str(c): d
+            for c, d in zip(df[key_column], df[description_column], strict=True)
+        }
 
         added = {c: d for c, d in incoming.items() if c not in known}
         removed = {c: d for c, d in known.items() if c not in incoming}

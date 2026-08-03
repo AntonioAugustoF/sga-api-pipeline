@@ -1,4 +1,5 @@
 import datetime
+
 import pandas as pd
 
 
@@ -28,8 +29,13 @@ def classify_aging_bucket(days_overdue: pd.Series) -> pd.Series:
     return days_overdue.apply(_bucket)
 
 
-def classify_payment_status(df: pd.DataFrame, paid_flag_col: str, invoice_value_col: str, paid_value_col: str) -> pd.Series:
-    """Reconciles invoice value against amount paid: nao_pago, pago_integral, pago_a_menor, pago_a_maior."""
+def classify_payment_status(
+        df: pd.DataFrame, paid_flag_col: str, invoice_value_col: str, paid_value_col: str
+    ) -> pd.Series:
+    """
+    Reconciles invoice value against amount paid:
+    nao_pago, pago_integral, pago_a_menor, pago_a_maior.
+    """
     def _status(row):
         if row[paid_flag_col] != "y":
             return "nao_pago"

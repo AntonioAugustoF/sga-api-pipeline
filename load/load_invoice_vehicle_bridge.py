@@ -1,8 +1,10 @@
-import os
 import glob
+import os
+
 import pandas as pd
+
 from infra.logger import get_logger
-from load.load_facts import upsert_to_postgres, add_audit_columns
+from load.load_facts import add_audit_columns, upsert_to_postgres
 
 logger = get_logger(__name__)
 

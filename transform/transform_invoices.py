@@ -1,23 +1,25 @@
 import os
+
 import pandas as pd
+
 from infra.loader import load_raw_to_dataframe
 from infra.logger import get_logger
 from infra.transformations import (
-    rename_columns,
-    remove_duplicates,
-    remove_empty_rows,
-    cast_string_columns,
     cast_date_columns,
     cast_numeric_columns,
+    cast_string_columns,
     flatten_single_value_lists,
     join_list_columns,
+    remove_duplicates,
+    remove_empty_rows,
+    rename_columns,
 )
 from transform.business_rules import (
+    allocate_invoice_value_by_vehicle,
     calculate_days_overdue,
+    calculate_payment_difference,
     classify_aging_bucket,
     classify_payment_status,
-    calculate_payment_difference,
-    allocate_invoice_value_by_vehicle,
 )
 
 logger = get_logger(__name__)

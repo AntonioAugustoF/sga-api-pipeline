@@ -1,9 +1,11 @@
 from functools import lru_cache
+from urllib.parse import quote_plus
+
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
+
 from infra.config import config
 from infra.logger import get_logger
-from urllib.parse import quote_plus
 
 logger = get_logger(__name__)
 
@@ -30,6 +32,6 @@ if __name__ == "__main__":
         engine = get_db_engine()
         with engine.connect() as conn:
             logger.info("Database connection established successfully.")
-    except Exception as e:
+    except Exception:
         logger.error("Critical failure during database connection test.")
         raise

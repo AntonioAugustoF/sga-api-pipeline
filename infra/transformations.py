@@ -1,5 +1,6 @@
 import pandas as pd
 
+
 def rename_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Lowercases and strips whitespace from all column names."""
     df.columns = df.columns.str.lower().str.strip()

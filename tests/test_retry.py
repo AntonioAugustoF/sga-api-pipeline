@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock
 
-import requests
 import pytest
+import requests
 
 from infra.retry import with_retry
 

@@ -1,9 +1,9 @@
-import os
 import json
+import os
 from datetime import datetime
-from infra.config import config
-from infra.authenticator import authenticate_user
+
 from extract.extract_invoices import _fetch_by_status
+from infra.authenticator import authenticate_user
 from infra.logger import get_logger
 
 logger = get_logger(__name__)

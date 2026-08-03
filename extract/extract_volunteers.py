@@ -1,9 +1,10 @@
-import os
 import json
+import os
 from datetime import datetime
-from infra.config import config
-from infra.authenticator import authenticate_user
+
 from infra.api_fetcher import APIFetcher, deduplicate_by_key
+from infra.authenticator import authenticate_user
+from infra.config import config
 from infra.logger import get_logger
 
 logger = get_logger(__name__)

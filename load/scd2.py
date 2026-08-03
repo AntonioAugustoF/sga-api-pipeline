@@ -1,6 +1,8 @@
-import pandas as pd
 from datetime import date as _date
-from sqlalchemy import text, inspect
+
+import pandas as pd
+from sqlalchemy import inspect, text
+
 from infra.db_connector import get_db_engine
 from infra.logger import get_logger
 from load.load_facts import sync_table_schema
@@ -38,7 +40,7 @@ def upsert_scd2_dimension(
     """
     engine = get_db_engine()
     attr_columns = [c for c in df.columns if c != natural_key]
-    all_columns = [natural_key] + attr_columns
+    all_columns = [natural_key, *attr_columns]
     non_monitored = [c for c in attr_columns if c not in monitored_columns]
     temp_table = f"_temp_{table_name}"
     changed_table = f"_changed_{table_name}"

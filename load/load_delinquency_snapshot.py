@@ -1,12 +1,13 @@
-import os
 import glob
-import pandas as pd
+import os
 from datetime import date
-from sqlalchemy import text, inspect
+
+import pandas as pd
+from sqlalchemy import inspect, text
+
 from infra.db_connector import get_db_engine
 from infra.logger import get_logger
-from load.load_facts import resolve_point_in_time_sk
-from load.load_facts import sync_table_schema
+from load.load_facts import resolve_point_in_time_sk, sync_table_schema
 
 logger = get_logger(__name__)
 

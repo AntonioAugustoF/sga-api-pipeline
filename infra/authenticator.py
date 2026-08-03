@@ -1,4 +1,5 @@
 import requests
+
 from infra.config import config
 from infra.logger import get_logger
 from infra.retry import with_retry

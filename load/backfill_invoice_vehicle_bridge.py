@@ -1,8 +1,9 @@
 import pandas as pd
 from sqlalchemy import text
+
 from infra.db_connector import get_db_engine
 from infra.logger import get_logger
-from load.load_facts import upsert_to_postgres, add_audit_columns
+from load.load_facts import add_audit_columns, upsert_to_postgres
 from load.load_invoice_vehicle_bridge import BRIDGE_TABLE, PK_COLUMNS
 from transform.business_rules import allocate_invoice_value_by_vehicle
 

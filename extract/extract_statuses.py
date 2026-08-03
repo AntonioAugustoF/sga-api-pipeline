@@ -1,9 +1,11 @@
-import os
 import json
-import requests
+import os
 from datetime import datetime
-from infra.config import config
+
+import requests
+
 from infra.authenticator import authenticate_user
+from infra.config import config
 from infra.logger import get_logger
 from infra.retry import with_retry
 

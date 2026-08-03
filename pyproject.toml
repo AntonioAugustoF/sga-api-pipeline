@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sga-api-pipeline"
+version = "0.1.0"
+description = "ETL pipeline that extracts from the SGA API and loads a PostgreSQL data warehouse"
+requires-python = ">=3.13"
+# Dependencies stay in requirements.txt: the Docker image and the CI install from
+# there, and duplicating them here would let the two drift apart.
+
+[tool.setuptools]
+packages = ["extract", "transform", "load", "infra", "orchestrators"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "SIM", "UP", "RUF"]
+# DTZ (timezone-aware datetimes) is deliberately out for now. The reference date
+# names raw files and stamps data_referencia, so making it timezone-aware changes
+# behaviour and belongs in its own change, with a shared clock helper — not mixed
+# into a lint pass. See infra/alerts.py, which already pins America/Sao_Paulo.
+ignore = [
+    # The pipeline deliberately catches broad exceptions at resilience boundaries
+    # (per-status extraction, per-entity load, alerting), where one failure must
+    # not abort the remaining work. Every one of them is logged.
+    "BLE001",
+    # _is_retryable reads better as an explicit guard clause.
+    "SIM103",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests build fixtures with naive datetimes on purpose.
+"tests/*" = ["DTZ001", "DTZ005"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

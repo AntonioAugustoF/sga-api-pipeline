@@ -1,7 +1,9 @@
 import json
 import os
 from datetime import datetime
+
 import pandas as pd
+
 from infra.logger import get_logger
 
 logger = get_logger(__name__)
@@ -13,7 +15,7 @@ def load_raw_to_dataframe(entity: str) -> pd.DataFrame:
     file_name = f"{entity}_{current_date}.json"
     file_path = os.path.join("data", "raw", file_name)
 
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, encoding="utf-8") as f:
         data = json.load(f)
 
     df = pd.DataFrame(data)
@@ -27,7 +29,7 @@ def load_status_lookup(entity: str) -> dict:
     file_name = f"{entity}_status_lookup_{current_date}.json"
     file_path = os.path.join("data", "raw", file_name)
 
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, encoding="utf-8") as f:
         lookup = json.load(f)
 
     logger.info(f"{file_name} loaded: {len(lookup)} statuses")

@@ -1,11 +1,21 @@
 .env
 
-__pycache__/
 *.pyc
+
+# Tool caches. Anchored to directory names on purpose: a bare *cache*
+# pattern would also swallow a source file such as infra/cache.py, which
+# would then silently never be committed.
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
 
 data/raw/
 data/processed/
 
 logs/
 
-sga_dump.sql
+# Data dumps: may carry personal data (CPF, telefone, email).
+# The schema baseline under sql/ holds no rows and is versioned.
+*.sql
+!sql/**/*.sql

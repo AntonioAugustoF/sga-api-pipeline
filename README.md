@@ -75,7 +75,7 @@ flowchart LR
 - [Testing & CI](#testing--ci)
 - [Prerequisites](#prerequisites)
 - [Running Project](#running-project)
-- [Running with Docker](#running-with-docker)
+- [Local PostgreSQL with Docker](#local-postgresql-with-docker)
 - [Scheduling](#scheduling)
 - [License](#license)
 - [Contact](#contact)
@@ -101,7 +101,7 @@ sga-api-pipeline/
 ├── tests/              # Unit tests (pytest)
 ├── transform/          # Data cleaning, processing, and business logic (Pandas)
 ├── Dockerfile          # Pipeline application image
-└── docker-compose.yml  # Full stack: pipeline + PostgreSQL
+└── docker-compose.yml  # Disposable PostgreSQL for local development
 ```
 
 ---
@@ -293,7 +293,7 @@ Software required to run the project locally:
 - Essential packages listed in `requirements.txt`
 - Environment file configured (`.env`)
 
-Alternatively, run everything with Docker (see [Running with Docker](#running-with-docker)) — only Docker, Docker Compose and a configured `.env` are required, with no local Python or PostgreSQL install.
+A disposable PostgreSQL for development is available via Docker Compose (see [Local PostgreSQL with Docker](#local-postgresql-with-docker)); the pipeline itself always runs on the host.
 
 ---
 
@@ -352,33 +352,28 @@ pytest
 
 ---
 
-## Running with Docker
+## Local PostgreSQL with Docker
 
-The project ships with a `Dockerfile` and a `docker-compose.yml` that bring up the whole stack — the pipeline and its PostgreSQL database — reproducibly, with no local Python or PostgreSQL install required.
-
-Prerequisites: Docker and Docker Compose, plus a configured `.env` (same variables as above).
-
-Build and start the stack in the background:
+The warehouse itself runs on a native PostgreSQL service, and the pipeline is
+scheduled by two Windows services — see [Scheduling](#scheduling). The compose
+stack is not that deployment: it only brings up a disposable PostgreSQL for
+local development and tests, published on host port `5433` so it never shadows
+the real database on `5432`.
 
 ```bash
-docker compose up --build -d
+docker compose up -d              # start the throwaway database
+docker compose ps                 # service status
+docker compose down               # stop it (keeps the volume)
+docker compose down -v            # stop and delete the volume
 ```
 
-This starts two services: `postgres` (PostgreSQL 18, on host port `5433` to avoid clashing with a local install on `5432`, data persisted in a named volume) and `pipeline` (the app, serving the Prefect schedule). Inside the compose network the app reaches the database at host `postgres` — Compose overrides `DB_HOST` accordingly, so the `.env` value is only used for non-Docker runs.
+To point a run at it, override `DB_PORT=5433`. Do this deliberately: a stale
+copy on `5433` looks exactly like the real warehouse until you count the tables.
 
-Useful commands:
-
-```bash
-docker compose ps                    # service status
-docker compose logs -f pipeline      # follow the pipeline logs
-docker compose down                  # stop the stack (keeps the database volume)
-docker compose down -v               # stop and delete the database volume
-```
-
-The containerized database starts empty and is repopulated by the pipeline on its next run. To seed it with an existing database instead, restore a dump into the `postgres` service:
+To rebuild the schema in an empty instance, apply the baseline:
 
 ```bash
-docker compose exec -T postgres psql -U "$DB_USER" -d "$DB_NAME" < your_dump.sql
+docker compose exec -T postgres psql -U "$DB_USER" -d "$DB_NAME" < sql/ddl/000_baseline.sql
 ```
 
 ---

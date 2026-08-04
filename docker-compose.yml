@@ -1,3 +1,10 @@
+# This stack is NOT the deployment. The pipeline runs on the host as two
+# Windows services (SGA-Prefect, SGA-Prefect-Server, both Automatic) writing
+# to the native PostgreSQL service on 5432 — none of which need an interactive
+# session. Docker Desktop here uses the WSL2 backend, whose containers only
+# exist while a user is logged in, so it cannot host the warehouse.
+#
+# What remains is a throwaway PostgreSQL for local development and tests.
 services:
   postgres:
     image: postgres:18
@@ -8,29 +15,14 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql
     ports:
-      # 5433 no host: evita conflito com o Postgres que você já tem na 5432
+      # 5433 on the host: the warehouse lives on the native service on 5432
+      # and this stack must never shadow it.
       - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
-
-  pipeline:
-    build: .
-    env_file: .env
-    environment:
-      # Sobrescreve o .env: dentro da rede do compose, o banco atende
-      # pelo nome do serviço ("postgres"), não por localhost.
-      DB_HOST: postgres
-      DB_PORT: 5432
-      TZ: America/Sao_Paulo
-    depends_on:
-      postgres:
-        condition: service_healthy
-    volumes:
-      - ./data:/app/data
-    restart: unless-stopped
 
 volumes:
   pgdata:

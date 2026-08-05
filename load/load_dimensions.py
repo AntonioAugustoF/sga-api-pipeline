@@ -186,8 +186,13 @@ def run_dimensions_load():
 
     total_tables = len(SIMPLE_DIMENSIONS) + len(SCD2_DIMENSIONS)
     logger.info(f"Load finished. Successfully loaded {success_count}/{total_tables} tables.")
+
     if failed_entities:
-        logger.warning(f"Failed entities: {failed_entities}")
+        raise RuntimeError(
+            f"Dimension load finished with failures: {failed_entities}. "
+            f"Loaded {success_count}/{total_tables} tables. Facts must not be loaded against "
+            f"stale dimensions, and the flow must not report success."
+        )
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ import requests
 from infra.api_fetcher import APIFetcher, deduplicate_by_key
 from infra.authenticator import authenticate_user
 from infra.config import config
+from infra.extraction_guard import assert_extraction_complete
 from infra.logger import get_logger
 
 logger = get_logger(__name__)
@@ -55,6 +56,7 @@ def run_customer_extraction() -> str:
         logger.info(f"Status lookup saved to: {lookup_path}")
 
         all_records = []
+        failures: dict[str, str] = {}
         for status in status_list:
             try:
                 all_records.extend(extract_customers_by_status(status, fetcher))
@@ -65,8 +67,12 @@ def run_customer_extraction() -> str:
                     logger.info(f"Status {status}: no customers found (406 empty result).")
                 else:
                     logger.warning(f"HTTP error extracting status {status}: {e}")
+                    failures[str(status)] = str(e)
             except Exception as e:
                 logger.warning(f"Error extracting status {status}: {e}")
+                failures[str(status)] = str(e)
+
+        assert_extraction_complete(failures, "customers")
 
         unique_customers = deduplicate_by_key(all_records, "codigo_associado")
         logger.info(f"Total extracted: {len(all_records)} | Unique: {len(unique_customers)}")

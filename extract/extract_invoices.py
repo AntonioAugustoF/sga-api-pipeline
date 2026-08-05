@@ -6,6 +6,7 @@ import requests
 
 from infra.authenticator import authenticate_user
 from infra.config import config
+from infra.extraction_guard import assert_extraction_complete
 from infra.logger import get_logger
 from infra.retry import with_retry
 
@@ -88,8 +89,9 @@ def _fetch_by_status(status_code, user_token, date_filters: dict) -> list:
     return all_boletos
 
 
-def _extract_for_all_statuses(user_token, status_list, date_filters: dict, label: str) -> list:
+def _extract_for_all_statuses(user_token, status_list, date_filters: dict, label: str) -> tuple[list, dict[str, str]]:
     all_records = []
+    failures: dict[str, str] = {}
     for status in status_list:
         try:
             records = _fetch_by_status(status, user_token, date_filters)
@@ -102,12 +104,14 @@ def _extract_for_all_statuses(user_token, status_list, date_filters: dict, label
                 logger.info(f"[{label}] Status {status}: no invoices found (406 empty result).")
             else:
                 logger.warning(f"[{label}] HTTP error extracting status {status}: {e}")
+                failures[f"{label}/{status}"] = str(e)
         except Exception as e:
             logger.warning(f"[{label}] Error extracting status {status}: {e}")
-    return all_records
+            failures[f"{label}/{status}"] = str(e)
+    return all_records, failures
 
 
-def extract_new_invoices(user_token, status_list) -> list:
+def extract_new_invoices(user_token, status_list) -> tuple[list, dict[str, str]]:
     today = datetime.now()
     filters = {
         "data_emissao_inicial": _fmt(today - timedelta(days=7)),
@@ -117,7 +121,7 @@ def extract_new_invoices(user_token, status_list) -> list:
     return _extract_for_all_statuses(user_token, status_list, filters, "NEW")
 
 
-def extract_paid_invoices(user_token, status_list) -> list:
+def extract_paid_invoices(user_token, status_list) -> tuple[list, dict[str, str]]:
     today = datetime.now()
     filters = {
         "data_pagamento_inicial": _fmt(today - timedelta(days=30)),
@@ -130,7 +134,7 @@ def extract_paid_invoices(user_token, status_list) -> list:
     return _extract_for_all_statuses(user_token, status_list, filters, "PAID")
 
 
-def extract_due_date_changes(user_token, status_list) -> list:
+def extract_due_date_changes(user_token, status_list) -> tuple[list, dict[str, str]]:
     today = datetime.now()
     filters = {
         "data_vencimento_inicial": _fmt(today - timedelta(days=30)),
@@ -151,9 +155,13 @@ def run_invoice_extraction():
         status_list = get_invoice_statuses(user_token)
         logger.info(f"Statuses found: {status_list}")
 
-        new_records = extract_new_invoices(user_token, status_list)
-        paid_records = extract_paid_invoices(user_token, status_list)
-        due_records = extract_due_date_changes(user_token, status_list)
+        new_records, new_failures = extract_new_invoices(user_token, status_list)
+        paid_records, paid_failures = extract_paid_invoices(user_token, status_list)
+        due_records, due_failures = extract_due_date_changes(user_token, status_list)
+
+        assert_extraction_complete(
+            {**new_failures, **paid_failures, **due_failures}, "invoices"
+        )
 
         merged = {}
         for record in new_records + paid_records + due_records:

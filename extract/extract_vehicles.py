@@ -7,6 +7,7 @@ import requests
 from infra.api_fetcher import APIFetcher, deduplicate_by_key
 from infra.authenticator import authenticate_user
 from infra.config import config
+from infra.extraction_guard import assert_extraction_complete
 from infra.logger import get_logger
 
 logger = get_logger(__name__)
@@ -49,6 +50,7 @@ def run_vehicle_extraction() -> str:
         logger.info(f"Statuses found to extract: {status_list}")
 
         all_records = []
+        failures: dict[str, str] = {}
         for status in status_list:
             try:
                 all_records.extend(extract_vehicles_by_status(status, fetcher))
@@ -59,8 +61,12 @@ def run_vehicle_extraction() -> str:
                     logger.info(f"Status {status}: no vehicles found (406 empty result).")
                 else:
                     logger.warning(f"HTTP error extracting status {status}: {e}")
+                    failures[str(status)] = str(e)
             except Exception as e:
                 logger.warning(f"Error extracting status {status}: {e}")
+                failures[str(status)] = str(e)
+
+        assert_extraction_complete(failures, "vehicles")
 
         unique_vehicles = deduplicate_by_key(all_records, "codigo_veiculo")
         logger.info(f"Total extracted: {len(all_records)} | Unique: {len(unique_vehicles)}")

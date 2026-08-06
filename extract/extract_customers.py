@@ -36,15 +36,7 @@ def run_customer_extraction() -> str:
         current_date = datetime.now().strftime("%Y-%m-%d")
         fetcher = APIFetcher(config.API_BASE_URL, user_token, page_size=1000, timeout=60)
 
-        url_statuses = f"{config.API_BASE_URL}/listar/situacao/todos"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {user_token}"
-        }
-
-        response = requests.get(url_statuses, headers=headers, timeout=60)
-        response.raise_for_status()
-        statuses_data = response.json()
+        statuses_data = fetcher.fetch_all("/listar/situacao/todos")
 
         status_list = [s["codigo_situacao"] for s in statuses_data]
         logger.info(f"Statuses found to extract: {status_list}")

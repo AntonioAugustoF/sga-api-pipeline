@@ -2,12 +2,10 @@ import json
 import os
 from datetime import datetime
 
-import requests
-
+from infra.api_fetcher import APIFetcher
 from infra.authenticator import authenticate_user
 from infra.config import config
 from infra.logger import get_logger
-from infra.retry import with_retry
 
 logger = get_logger(__name__)
 
@@ -17,13 +15,6 @@ STATUS_DOMAINS = {
     "statuses": "/listar/situacao/todos",
     "invoice_statuses": "/listar/situacao-boleto/todos",
 }
-
-
-@with_retry()
-def _get_statuses(endpoint: str, headers: dict) -> list[dict]:
-    response = requests.get(f"{config.API_BASE_URL}{endpoint}", headers=headers, timeout=60)
-    response.raise_for_status()
-    return response.json()
 
 
 def run_status_extraction() -> list[str]:
@@ -38,14 +29,11 @@ def run_status_extraction() -> list[str]:
     try:
         user_token = authenticate_user()
         current_date = datetime.now().strftime("%Y-%m-%d")
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {user_token}"
-        }
+        fetcher = APIFetcher(config.API_BASE_URL, user_token, timeout=60)
 
         output_paths = []
         for entity, endpoint in STATUS_DOMAINS.items():
-            records = _get_statuses(endpoint, headers)
+            records = fetcher.fetch_all(endpoint)
             logger.info(f"{entity}: {len(records)} statuses extracted from {endpoint}.")
 
             output_path = os.path.join("data", "raw", f"{entity}_{current_date}.json")

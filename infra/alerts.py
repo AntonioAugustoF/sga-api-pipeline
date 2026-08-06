@@ -102,3 +102,28 @@ def send_status_coverage_alert(
     )
 
     _send_to_discord(content, "status coverage alert")
+
+
+def send_staleness_alert(stale_tables: dict[str, float | None], max_age_hours: float) -> None:
+    """Warns that the warehouse has not been written within the expected window.
+    
+    Unlike send_failure_alert, this does not depend on a flow having run — it is
+    the only alert that fires when the pipeline does not execute at all.
+    """
+    if not stale_tables:
+        return
+
+    listed = "\n".join(
+        f"- `{table}` — " + ("nunca escrita" if age is None else f"{age:.1f}h sem atualização")
+        for table, age in sorted(stale_tables.items())
+    )
+    content = (
+        f"<@{ALERT_MENTION_USER_ID}>\n"
+        "**🕒 O data warehouse está desatualizado**\n\n"
+        f"{listed}\n\n"
+        f"Limite esperado: {max_age_hours:.0f}h desde a última escrita.\n"
+        "O pipeline pode não ter sido executado. Verifique se o agendamento do Prefect "
+        "está ativo e se o deployment está READY."
+    )
+
+    _send_to_discord(content, "staleness alert")

@@ -36,6 +36,19 @@ class APIFetcher:
         response.raise_for_status()
         return response
 
+    @with_retry()
+    def fetch_all(self, endpoint: str) -> list[dict]:
+        """Fetches an unpaginated reference list in a single request.
+        
+        Status lists arrive whole, so the pagination helpers don't apply — but the
+        call still needs the retry, headers and timeout the fetcher already carries.
+        """
+        url = f"{self._base_url}{endpoint}"
+        response = requests.get(url, headers=self._headers, timeout=self._timeout)
+        response.raise_for_status()
+        return response.json()
+
+
     def fetch_by_offset(
         self,
         endpoint: str,

@@ -1,6 +1,7 @@
 import glob
 import logging
 import os
+import sys
 import time
 from datetime import date
 
@@ -14,6 +15,16 @@ def _prune_old_logs(log_dir: str) -> None:
     for path in glob.glob(os.path.join(log_dir, "pipeline_*.log")):
         if os.path.getmtime(path) < cutoff:
             os.remove(path)
+
+
+def _running_under_pytest() -> bool:
+    """True when the process was started by pytest.
+    
+    Detected via sys.modules rather than PYTEST_CURRENT_TEST because most
+    get_logger calls happen at import time, during collection, when that
+    environment variable has not been set yet.
+    """
+    return "pytest" in sys.modules
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -37,9 +48,17 @@ def get_logger(name: str) -> logging.Logger:
         datefmt="%Y-%m-%d %H:%M:%S"
     )
 
-    # Console handler
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    # The suite exercises failure paths on purpose, so its ERROR lines used to land
+    # in the same daily file used to diagnose real incidents. Ruling out fabricated
+    # errors already cost time twice while investigating a run that had none.
+    # Returning early also keeps _prune_old_logs from deleting production logs
+    # merely because a module was imported by a test.
+    if _running_under_pytest():
+        return logger
 
     # File handler: one file per day, opened in append mode. Multiple processes
     # can safely append to the same file concurrently — only rename/rollover
@@ -49,8 +68,6 @@ def get_logger(name: str) -> logging.Logger:
     log_path = os.path.join(LOG_DIR, f"pipeline_{date.today():%Y-%m-%d}.log")
     file_handler = logging.FileHandler(log_path, encoding="utf-8")
     file_handler.setFormatter(formatter)
-
-    logger.addHandler(console_handler)
     logger.addHandler(file_handler)
 
     return logger

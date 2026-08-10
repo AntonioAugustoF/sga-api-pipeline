@@ -1,0 +1,13 @@
+name: sga_analytics
+version: 0.1.0
+profile: sga
+
+model-paths: ["models"]
+test-paths: ["tests"]
+
+# Future models are made on schema 'analytics'. The 'public' schema is written
+# by Python pipeline and here its just readed as source — the dbt never materializes
+# nothing about it, so adopt the framework does not risk the existent DW.
+models:
+  sga_analytics:
+    +schema: analytics

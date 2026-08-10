@@ -1,0 +1,74 @@
+version: 2
+
+sources:
+  - name: warehouse
+    description: >
+      Tables written by Python pipeline (extract/transform/load).
+      The dbt only read it; the materialization happens on analytics schema.
+    schema: public
+
+    tables:
+      - name: dim_vehicles
+        loaded_at_field: atualizado_em
+        freshness:
+          warn_after: {count: 26, period: hour}
+          error_after: {count: 48, period: hour}
+        columns:
+          - name: sk_vehicle
+            description: Substitute key of SCD2 version.
+            tests: [unique, not_null]
+          - name: codigo_veiculo
+            description: Natural key. Repeat between versions, thus is not unique.
+            tests: [not_null]
+          - name: vigente
+            tests: [not_null]
+
+      - name: dim_customers
+        loaded_at_field: atualizado_em
+        freshness:
+          warn_after: {count: 26, period: hour}
+          error_after: {count: 48, period: hour}
+        columns:
+          - name: sk_customer
+            tests: [unique, not_null]
+          - name: codigo_associado
+            tests: [not_null]
+          - name: vigente
+            tests: [not_null]
+
+      - name: dim_status
+        columns:
+          - name: codigo_situacao
+            tests: [unique, not_null]
+
+      - name: dim_volunteers
+        columns:
+          - name: codigo_voluntario
+            tests: [unique, not_null]
+
+      - name: fact_invoices
+        loaded_at_field: atualizado_em
+        freshness:
+          warn_after: {count: 26, period: hour}
+          error_after: {count: 48, period: hour}
+        columns:
+          - name: codigo_boleto
+            tests: [unique, not_null]
+          - name: sk_customer
+            description: >
+              Resolved point-in-time against dim_customers on issue date.
+              Null when there was no version in effective date.
+            tests:
+              - relationships:
+                  arguments:
+                    to: source('warehouse', 'dim_customers')
+                    field: sk_customer
+
+      - name: bridge_invoices_vehicles
+        columns:
+          - name: codigo_boleto
+            tests:
+              - relationships:
+                  arguments:
+                    to: source('warehouse', 'fact_invoices')
+                    field: codigo_boleto

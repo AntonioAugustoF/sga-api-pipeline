@@ -16,6 +16,12 @@ data/processed/
 logs/
 
 # Data dumps: may carry personal data (CPF, telefone, email).
-# The schema baseline under sql/ holds no rows and is versioned.
+# Versioned SQL lives under sql/ (schema) and dbt/ (models and tests).
 *.sql
 !sql/**/*.sql
+!dbt/**/*.sql
+
+# dbt build artifacts
+target/
+dbt_packages/
+.user.yml

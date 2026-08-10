@@ -73,6 +73,7 @@ flowchart LR
   - [Infrastructure & Orchestration](#infrastructure--orchestration)
 - [Entities](#entities)
 - [Testing & CI](#testing--ci)
+  - [Data Tests with dbt](#data-tests-with-dbt)
 - [Prerequisites](#prerequisites)
 - [Running Project](#running-project)
 - [Local PostgreSQL with Docker](#local-postgresql-with-docker)
@@ -92,12 +93,13 @@ sga-api-pipeline/
 ├── data/
 │   ├── raw/            # Raw JSON files extracted from the API
 │   └── processed/      # Cleaned Parquet files ready for loading
+├── dbt/                # Declarative data tests over the loaded warehouse
 ├── extract/            # Extraction scripts (API connectors)
 ├── infra/              # Connections, config, logging, retry, alerts
 ├── load/               # Loading modules (PostgreSQL insertions)
 ├── logs/               # Application and pipeline execution logs
 ├── orchestrators/      # Prefect flow and scheduling scripts
-├── sql/                # Hand-written analytical views
+├── sql/                # Schema baseline (ddl/) and analytical views
 ├── tests/              # Unit tests (pytest)
 ├── transform/          # Data cleaning, processing, and business logic (Pandas)
 ├── Dockerfile          # Pipeline application image
@@ -280,7 +282,70 @@ Documented rather than glossed over, since they shape how the model should be qu
 
 Unit tests live in `/tests` and run with `pytest`. They cover the transformation helpers, business rules, the retry decorator, the API fetcher, the dimension-drop guard, the status coverage guard, and the SCD2 behavior — including a regression test ensuring a closed version always has its replacement opened — all mocked, with no dependency on a live API or database.
 
-A GitHub Actions workflow (`.github/workflows/tests.yml`) runs the full test suite on every push and pull request to `main`.
+A GitHub Actions workflow (`.github/workflows/tests.yml`) runs the full test suite on every push and pull 
+request to `main`.
+
+---
+
+## Data Tests with dbt
+
+The `pytest` suite verifies Python functions. It cannot catch a warehouse that
+successfully but holds wrong data — which is what every incident in this
+project has been. `dbt/` holds declarative tests over the tables the pipeline
+already wrote.
+
+dbt reads the `public` schema as a source and materializes nothing there, so
+running it cannot alter the warehouse. Future models build into a separate
+`analytics` schema.
+
+- **Schema tests** (`dbt/models/warehouse/_source.yml`) — surrogate keys are
+  unique and not null, natural keys are never  null, and every `sk_customer` on a
+  fact resolves to a row in `dim_customers`.
+- **Singular tests** (`dbt/tests/`) — exactly one current SCD2 version per
+  natural key, no billed vehicle missing from the dimension, and
+  `SUM(valor_rateado)` reconstructing `valor_boleto`.
+
+Source freshness declares the same 26-hour window as `infra/freshness.py`. The
+Python check is not redundant: it runs from the Windows Task Scheduler and must
+keep working when the rest does not.
+
+### Running
+
+Unlike the pipeline, dbt does not load `.env` itself — `profiles.yml` reads the
+credentials through `env_var`, so export them first:
+
+```bash
+set -a; source .env; set +a
+```
+
+From the repository root:
+
+```bash
+dbt test --project-dir dbt --profiles-dir dbt
+dbt source freshness --project-dir dbt --profiles-dir dbt
+```
+
+Or from inside `dbt/`, where `dbt_project.yml` lives:
+
+```bash
+cd dbt
+dbt test --profiles-dir .
+```
+
+`dbt-postgres` is deliberately absent from `requirements.txt`: CI has no
+database and data tests need real rows, so these run locally.
+
+### THe known-orphan threshold
+
+`assert_no_orphan_vehicles_in_bridge` is configured with `error_if: '>1'`.
+One vehicle (`3738`) is billed by an invoice but has no current row in
+`dim_vehicles`. It predates the fix to the source status list and cannot be
+resolved from the API today.
+
+The threshold records that debt at its exact size: it warns on every run so the
+gap stays visible, and it fails the moment a second orphan appears. Deleting the
+test would hide a real problem; leaving it permanently red would train everyone
+to ignore it.
 
 ---
 

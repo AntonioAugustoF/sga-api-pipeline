@@ -73,7 +73,7 @@ flowchart LR
   - [Infrastructure & Orchestration](#infrastructure--orchestration)
 - [Entities](#entities)
 - [Testing & CI](#testing--ci)
-  - [Data Tests with dbt](#data-tests-with-dbt)
+  - [Analytics Layer with dbt](#analytics-layer-with-dbt)
 - [Prerequisites](#prerequisites)
 - [Running Project](#running-project)
 - [Local PostgreSQL with Docker](#local-postgresql-with-docker)
@@ -287,7 +287,7 @@ request to `main`.
 
 ---
 
-## Data Tests with dbt
+## Analytics Layer with dbt
 
 The `pytest` suite verifies Python functions. It cannot catch a warehouse that
 successfully but holds wrong data — which is what every incident in this
@@ -308,6 +308,28 @@ running it cannot alter the warehouse. Future models build into a separate
 Source freshness declares the same 26-hour window as `infra/freshness.py`. The
 Python check is not redundant: it runs from the Windows Task Scheduler and must
 keep working when the rest does not.
+
+### Models
+
+`dbt run` three views into the `analytics` schema. Nothing in `public` is
+written, so the pipeline and the models never contend over the same objects.
+
+- `int_delinquency_by_vehicle` — the delinquency snapshot exploded by vehicle,
+  with the invoice value allocated across them. Both marts build on it.
+- `mart_delinquency_current` — attributed to whoever is responsible for the
+  vehicle **today**.
+- `mart_delinquency_point_in_time` — attributed to  whoever is responsible on
+  the snapshot's reference date.
+
+Both marts expose `sk_vehicle`, so downstream tools can relate on the surrogate
+key instead of the natural key, which repeats across SCD2 versions and fans out.
+
+They replace the `vw_delinquency_by_vehicle_atual` and `_historico` views, which
+lived only inside the database — unversioned, untested, and invisible to lineage.
+
+Materialized as views on purpose: a table would read faster but would need
+`dbt run` after every pipeline execution, which is an orchestration change. Move
+to tables when there is measured slowness, not before.
 
 ### Running
 

@@ -72,3 +72,14 @@ sources:
                   arguments:
                     to: source('warehouse', 'fact_invoices')
                     field: codigo_boleto
+    
+      - name: fact_delinquency_snapshot
+        loaded_at_field: criado_em
+        freshness:
+          warn_after: {count: 26, period: hour}
+          error_after: {count: 48, period: hour}
+        columns:
+          - name: dt_referencia
+            tests: [not_null]
+          - name: codigo_boleto
+            tests: [not_null]

@@ -10,4 +10,10 @@ test-paths: ["tests"]
 # nothing about it, so adopt the framework does not risk the existent DW.
 models:
   sga_analytics:
-    +schema: analytics
+    # No +schema here: dbt concatenates the custom schema to the target schema,
+    # and profiles.yml already points to 'analytics' — keeping both would result in
+    # analytics_analytics.
+    intermediate:
+      +materialized: view
+    marts:
+      +materialized: view

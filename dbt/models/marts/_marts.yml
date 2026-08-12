@@ -1,0 +1,18 @@
+version: 2
+
+models:
+  - name: int_delinquency_by_vehicle
+    description: >
+      Delinquency exploded by vehicle, with the prorated amount coming from bridge.
+      Common base of the two marts of assignment.
+    columns:
+      - name: codigo_boleto
+        tests: [not_null]
+      - name: dt_referencia
+        tests: [not_null]
+
+  - name: mart_delinquency_current
+    description: Delinquency assigned to the current vehicle responsible.
+    columns:
+      - name: sk_vehicle
+        description: Substitute key of the active record in dt_referencia.

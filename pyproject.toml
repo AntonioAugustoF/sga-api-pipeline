@@ -11,7 +11,7 @@ requires-python = ">=3.13"
 # there, and duplicating them here would let the two drift apart.
 
 [tool.setuptools]
-packages = ["extract", "transform", "load", "infra", "orchestrators"]
+packages = ["extract", "transform", "load", "infra", "orchestrators", "scripts"]
 
 [tool.ruff]
 target-version = "py313"

@@ -99,6 +99,7 @@ sga-api-pipeline/
 ├── load/               # Loading modules (PostgreSQL insertions)
 ├── logs/               # Application and pipeline execution logs
 ├── orchestrators/      # Prefect flow and scheduling scripts
+├── scripts/            # One-off loaders and backfills, outside the daily flow
 ├── sql/                # Schema baseline (ddl/) and analytical views
 ├── tests/              # Unit tests (pytest)
 ├── transform/          # Data cleaning, processing, and business logic (Pandas)

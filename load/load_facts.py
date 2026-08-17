@@ -8,6 +8,7 @@ from sqlalchemy import types as sa_types
 from sqlalchemy.engine import Connection, Engine
 
 from infra.db_connector import get_db_engine
+from infra.identifiers import assert_safe_identifiers
 from infra.logger import get_logger
 
 logger = get_logger(__name__)
@@ -68,6 +69,10 @@ def sync_table_schema(conn: Connection, engine: Engine, table_name: str, df: pd.
     missing_cols = [c for c in df.columns if c not in existing_cols]
     if not missing_cols:
         return
+
+    # Estes nomes vêm das chaves da API e são interpolados no ALTER TABLE abaixo,
+    # onde bind param não alcança. Validar antes de virar DDL.
+    assert_safe_identifiers(missing_cols, f"nome de coluna nova em '{table_name}'")
 
     logger.warning(f"Schema drift detected on '{table_name}': adding missing columns {missing_cols}")
     for col in missing_cols:
@@ -151,6 +156,13 @@ def upsert_to_postgres(
     """
     engine = get_db_engine()
     pk_cols = [pk_column] if isinstance(pk_column, str) else list(pk_column)
+
+    # df.columns carrega as chaves da resposta da API e alimenta o INSERT/UPDATE
+    # SET montados por interpolação; pk_cols vem de constante, mas validar ambos
+    # mantém a garantia local em vez de depender do caller.
+    assert_safe_identifiers(list(df.columns), f"nome de coluna de '{table_name}'")
+    assert_safe_identifiers(pk_cols, f"coluna de chave primária de '{table_name}'")
+
     pk_cols_sql = ", ".join(f'"{c}"' for c in pk_cols)
     frozen_cols = set(pk_cols) | set(immutable_columns or [])
 

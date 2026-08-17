@@ -6,6 +6,7 @@ import pandas as pd
 from sqlalchemy import inspect, text
 
 from infra.db_connector import get_db_engine
+from infra.identifiers import assert_safe_identifiers
 from infra.logger import get_logger
 from load.load_facts import resolve_point_in_time_sk, sync_table_schema
 
@@ -40,6 +41,10 @@ def load_delinquency_snapshot():
     df["criado_em"] = pd.Timestamp.now()
 
     today = date.today()
+
+    # Colunas vindas da API, interpoladas no INSERT ... SELECT mais abaixo.
+    assert_safe_identifiers(list(df.columns), f"nome de coluna de '{SNAPSHOT_TABLE}'")
+
     cols = ", ".join(f'"{c}"' for c in df.columns)
     pk_constraint = ", ".join(f'"{c}"' for c in PK_COLUMNS)
 

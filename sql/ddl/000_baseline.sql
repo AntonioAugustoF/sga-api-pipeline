@@ -18,6 +18,13 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+--
+-- Name: public; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA public;
+
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -33,6 +40,129 @@ CREATE TABLE public.bridge_invoices_vehicles (
     valor_rateado double precision,
     criado_em timestamp without time zone,
     data_referencia date,
+    atualizado_em timestamp without time zone
+);
+
+
+--
+-- Name: fact_delinquency_snapshot; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.fact_delinquency_snapshot (
+    codigo_associado text,
+    nome_associado text,
+    cpf_associado text,
+    codigo_situacao_associado text,
+    descricao_situacao_associado text,
+    codigo_regional_associado text,
+    nome_regional_associado text,
+    codigo_boleto text NOT NULL,
+    nosso_numero text,
+    codigo_situacao_boleto text,
+    descricao_situacao_boleto text,
+    pago text,
+    codigo_regional text,
+    nome_regional_boleto text,
+    mes_referente text,
+    data_emissao date,
+    data_vencimento_original date,
+    data_vencimento date,
+    valor_boleto double precision,
+    data_pagamento text,
+    valor_pagamento bigint,
+    data_credito_banco text,
+    referente text,
+    codigo_mgfformapagamento text,
+    codigo_forma_pagamento text,
+    descricao_forma_pagamento text,
+    tarifa_cobranca_banco double precision,
+    parcela_paga bigint,
+    qtde_parcela bigint,
+    descricao_tipo_cobranca_recorrente text,
+    codigo_tipo_boleto text,
+    descricao_tipo_boleto text,
+    codigo_conta text,
+    codigo_banco text,
+    nome_banco text,
+    agencia text,
+    conta text,
+    descricao_tipo_baixa_boleto text,
+    veiculo text,
+    beneficiario text,
+    codigo_situacao text,
+    dt_referencia date NOT NULL,
+    dias_em_atraso bigint,
+    faixa_atraso text,
+    sk_customer integer,
+    criado_em timestamp without time zone,
+    controle_carne bigint,
+    parcelado text
+);
+
+
+--
+-- Name: dim_vehicles; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.dim_vehicles (
+    codigo_veiculo text,
+    placa text,
+    chassi text,
+    renavam text,
+    codigo_associado text,
+    codigo_usuario text,
+    codigo_tipo text,
+    codigo_classificacao text,
+    codigo_cota text,
+    codigo_fipe text,
+    valor_fipe double precision,
+    valor_fipe_protegido text,
+    valor_fixo double precision,
+    pontos bigint,
+    data_reativacao date,
+    data_alteracao date,
+    codigo_depreciacao text,
+    codigo_tipo_envio_boleto text,
+    codigo_regional text,
+    codigo_cooperativa text,
+    codigo_marca text,
+    codigo_modelo text,
+    ano_fabricacao bigint,
+    ano_modelo bigint,
+    codigo_combustivel text,
+    codigo_cor text,
+    codigo_grupo_produto text,
+    codigo_vencimento text,
+    boleto_fisico text,
+    mes_final_carne bigint,
+    mes_referente text,
+    valor_adesao double precision,
+    codigo_categoria text,
+    tipo text,
+    categoria text,
+    marca text,
+    modelo text,
+    nome_associado text,
+    rg_associado text,
+    cpf_associado text,
+    telefone text,
+    ddd text,
+    telefone_celular text,
+    ddd_celular text,
+    email text,
+    codigo_situacao text,
+    descricao_situacao text,
+    data_cadastro date,
+    data_contrato date,
+    codigo_voluntario text,
+    nome_voluntario text,
+    cpf_voluntario text,
+    campos_opcionais text,
+    valido_de date,
+    valido_ate date,
+    vigente boolean,
+    sk_vehicle integer NOT NULL,
+    criado_em timestamp without time zone,
     atualizado_em timestamp without time zone
 );
 
@@ -242,73 +372,6 @@ CREATE TABLE public.dim_status_invoice (
 
 
 --
--- Name: dim_vehicles; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.dim_vehicles (
-    codigo_veiculo text,
-    placa text,
-    chassi text,
-    renavam text,
-    codigo_associado text,
-    codigo_usuario text,
-    codigo_tipo text,
-    codigo_classificacao text,
-    codigo_cota text,
-    codigo_fipe text,
-    valor_fipe double precision,
-    valor_fipe_protegido text,
-    valor_fixo double precision,
-    pontos bigint,
-    data_reativacao date,
-    data_alteracao date,
-    codigo_depreciacao text,
-    codigo_tipo_envio_boleto text,
-    codigo_regional text,
-    codigo_cooperativa text,
-    codigo_marca text,
-    codigo_modelo text,
-    ano_fabricacao bigint,
-    ano_modelo bigint,
-    codigo_combustivel text,
-    codigo_cor text,
-    codigo_grupo_produto text,
-    codigo_vencimento text,
-    boleto_fisico text,
-    mes_final_carne bigint,
-    mes_referente text,
-    valor_adesao double precision,
-    codigo_categoria text,
-    tipo text,
-    categoria text,
-    marca text,
-    modelo text,
-    nome_associado text,
-    rg_associado text,
-    cpf_associado text,
-    telefone text,
-    ddd text,
-    telefone_celular text,
-    ddd_celular text,
-    email text,
-    codigo_situacao text,
-    descricao_situacao text,
-    data_cadastro date,
-    data_contrato date,
-    codigo_voluntario text,
-    nome_voluntario text,
-    cpf_voluntario text,
-    campos_opcionais text,
-    valido_de date,
-    valido_ate date,
-    vigente boolean,
-    sk_vehicle integer NOT NULL,
-    criado_em timestamp without time zone,
-    atualizado_em timestamp without time zone
-);
-
-
---
 -- Name: dim_vehicles_current; Type: VIEW; Schema: public; Owner: -
 --
 
@@ -426,60 +489,6 @@ CREATE TABLE public.dim_volunteers (
 
 
 --
--- Name: fact_delinquency_snapshot; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.fact_delinquency_snapshot (
-    codigo_associado text,
-    nome_associado text,
-    cpf_associado text,
-    codigo_situacao_associado text,
-    descricao_situacao_associado text,
-    codigo_regional_associado text,
-    nome_regional_associado text,
-    codigo_boleto text NOT NULL,
-    nosso_numero text,
-    codigo_situacao_boleto text,
-    descricao_situacao_boleto text,
-    pago text,
-    codigo_regional text,
-    nome_regional_boleto text,
-    mes_referente text,
-    data_emissao date,
-    data_vencimento_original date,
-    data_vencimento date,
-    valor_boleto double precision,
-    data_pagamento text,
-    valor_pagamento bigint,
-    data_credito_banco text,
-    referente text,
-    codigo_mgfformapagamento text,
-    codigo_forma_pagamento text,
-    descricao_forma_pagamento text,
-    tarifa_cobranca_banco double precision,
-    parcela_paga bigint,
-    qtde_parcela bigint,
-    descricao_tipo_cobranca_recorrente text,
-    codigo_tipo_boleto text,
-    descricao_tipo_boleto text,
-    codigo_conta text,
-    codigo_banco text,
-    nome_banco text,
-    agencia text,
-    conta text,
-    descricao_tipo_baixa_boleto text,
-    veiculo text,
-    beneficiario text,
-    codigo_situacao text,
-    dt_referencia date NOT NULL,
-    dias_em_atraso bigint,
-    faixa_atraso text,
-    sk_customer integer,
-    criado_em timestamp without time zone
-);
-
-
---
 -- Name: fact_invoices; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -532,7 +541,9 @@ CREATE TABLE public.fact_invoices (
     sk_customer integer,
     criado_em timestamp without time zone,
     atualizado_em timestamp without time zone,
-    data_referencia date
+    data_referencia date,
+    controle_carne bigint,
+    parcelado text
 );
 
 

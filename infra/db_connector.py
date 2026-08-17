@@ -1,7 +1,6 @@
 from functools import lru_cache
-from urllib.parse import quote_plus
 
-from sqlalchemy import create_engine
+from sqlalchemy import URL, create_engine
 from sqlalchemy.engine import Engine
 
 from infra.config import config
@@ -13,18 +12,24 @@ logger = get_logger(__name__)
 @lru_cache(maxsize=1)
 def get_db_engine() -> Engine:
     """Returns a single shared engine/connection pool for the whole process,
-    instead of each loader opening its own pool against the same database."""
-    try:
-        connection_url = (
-            f"postgresql://{config.DB_USER}:{quote_plus(config.DB_PASSWORD)}"
-            f"@{config.DB_HOST}:{config.DB_PORT}/{config.DB_NAME}"
-        )
+    instead of each loader opening its own pool against the same database.
 
-        return create_engine(connection_url, pool_pre_ping=True)
+    Built via URL.create rather than an f-string URL: it escapes every component
+    (not just the password) and renders the password as *** in repr/str, so a
+    connection error that carries the URL cannot print the credential. The
+    previous try/except only logged and re-raised — its single net effect was
+    exposing that URL — so failures now propagate untouched.
+    """
+    url = URL.create(
+        "postgresql",
+        username=config.DB_USER,
+        password=config.DB_PASSWORD,
+        host=config.DB_HOST,
+        port=int(config.DB_PORT),
+        database=config.DB_NAME,
+    )
 
-    except Exception as e:
-        logger.error(f"Failed to configure database engine: {e}")
-        raise
+    return create_engine(url, pool_pre_ping=True)
 
 
 if __name__ == "__main__":

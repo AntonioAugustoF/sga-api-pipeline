@@ -3,7 +3,7 @@ import os
 import pandas as pd
 
 from infra.loader import load_raw_to_dataframe
-from infra.logger import get_logger
+from infra.logger import get_logger, log_frame_summary
 from infra.transformations import (
     cast_string_columns,
     remove_duplicates,
@@ -89,5 +89,4 @@ def transform_invoice_statuses() -> pd.DataFrame:
 
 if __name__ == "__main__":
     for frame in (transform_statuses(), transform_invoice_statuses()):
-        logger.info(frame.head().to_string())
-        logger.info(frame.dtypes.to_string())
+        log_frame_summary(logger, frame)

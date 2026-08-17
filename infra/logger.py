@@ -4,6 +4,10 @@ import os
 import sys
 import time
 from datetime import date
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 LOG_RETENTION_DAYS = 30
 LOG_DIR = "logs"
@@ -25,6 +29,19 @@ def _running_under_pytest() -> bool:
     environment variable has not been set yet.
     """
     return "pytest" in sys.modules
+
+
+def log_frame_summary(logger: logging.Logger, df: "pd.DataFrame") -> None:
+    """Logs a frame's shape and dtypes — deliberately never its rows.
+
+    The transformed frames carry personal data (cpf_associado, nome_associado,
+    telefone, email) and banking details (agencia, conta, nosso_numero), and the
+    file handler keeps every line for LOG_RETENTION_DAYS in plaintext. Shape and
+    dtypes answer what the debug blocks actually ask — did the transform run, are
+    the types right — without persisting a single personal record.
+    """
+    logger.info(f"{len(df)} rows x {len(df.columns)} columns")
+    logger.info(df.dtypes.to_string())
 
 
 def get_logger(name: str) -> logging.Logger:

@@ -3,7 +3,7 @@ import os
 import pandas as pd
 
 from infra.loader import load_raw_to_dataframe
-from infra.logger import get_logger
+from infra.logger import get_logger, log_frame_summary
 from infra.transformations import (
     cast_date_columns,
     cast_string_columns,
@@ -53,5 +53,4 @@ def transform() -> pd.DataFrame:
 
 if __name__ == "__main__":
     df = transform()
-    logger.info(df.head().to_string())
-    logger.info(df.dtypes.to_string())
+    log_frame_summary(logger, df)

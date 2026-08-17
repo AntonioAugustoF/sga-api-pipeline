@@ -414,6 +414,9 @@ DB_USER=your_user
 DB_PASSWORD=your_password
 # Optional: Discord webhook for failure alerts (skipped if unset)
 DISCORD_WEBHOOK_URL=
+# Optional: Discord user id mentioned on failure (alert is sent without a
+# mention if unset)
+DISCORD_ALERT_USER_ID=
 ```
 
 Run the full pipeline:

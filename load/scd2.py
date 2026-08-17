@@ -4,6 +4,7 @@ import pandas as pd
 from sqlalchemy import inspect, text
 
 from infra.db_connector import get_db_engine
+from infra.identifiers import assert_safe_identifier, assert_safe_identifiers
 from infra.logger import get_logger
 from load.load_facts import sync_table_schema
 
@@ -42,6 +43,17 @@ def upsert_scd2_dimension(
     attr_columns = [c for c in df.columns if c != natural_key]
     all_columns = [natural_key, *attr_columns]
     non_monitored = [c for c in attr_columns if c not in monitored_columns]
+
+    # all_columns deriva de df.columns (chaves da API) e é interpolado nos
+    # INSERT/UPDATE/CREATE TABLE AS abaixo. table_name/natural_key/surrogate_key
+    # vêm de constante, mas também compõem DDL — validados para que a garantia
+    # não dependa do caller.
+    assert_safe_identifiers(all_columns, f"nome de coluna de '{table_name}'")
+    assert_safe_identifier(table_name, "nome de tabela")
+    assert_safe_identifier(natural_key, "chave natural")
+    assert_safe_identifier(surrogate_key, "chave substituta")
+    assert_safe_identifiers(list(monitored_columns), "coluna monitorada")
+
     temp_table = f"_temp_{table_name}"
     changed_table = f"_changed_{table_name}"
 

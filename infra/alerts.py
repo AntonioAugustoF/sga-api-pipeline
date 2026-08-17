@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -10,9 +11,37 @@ logger = get_logger(__name__)
 
 LOCAL_TZ = ZoneInfo("America/Sao_Paulo")
 
-# Discord user id mentioned on failure so the alert triggers a mobile push
-# regardless of the channel's notification setting.
-ALERT_MENTION_USER_ID = "1325197672772272168"
+# Discord caps a webhook message at 2000 characters and rejects the whole
+# request above it, so a long traceback would lose the entire alert.
+MAX_REASON_LENGTH = 1200
+
+# Personal data that can ride along in a database error. A unique-violation
+# raised by psycopg2 quotes the offending value verbatim — e.g.
+# "DETAIL: Key (cpf_associado)=(12345678901) already exists" — which would
+# otherwise publish a real CPF to the Discord channel.
+_PII_PATTERNS = (
+    (re.compile(r"\b\d{3}\.\d{3}\.\d{3}-\d{2}\b"), "[CPF]"),
+    (re.compile(r"\b\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}\b"), "[CNPJ]"),
+    (re.compile(r"\b\d{14}\b"), "[CNPJ]"),
+    (re.compile(r"\b\d{11}\b"), "[CPF]"),
+    (re.compile(r"\b[\w.%+-]+@[\w.-]+\.[A-Za-z]{2,}\b"), "[EMAIL]"),
+    (re.compile(r"\(?\b\d{2}\)?\s?9?\d{4}-\d{4}\b"), "[TELEFONE]"),
+)
+
+
+def _mention_prefix() -> str:
+    """Returns the mention line, or empty when no alert user is configured."""
+    user_id = config.DISCORD_ALERT_USER_ID
+    return f"<@{user_id}>\n" if user_id else ""
+
+
+def _redact_pii(message: str) -> str:
+    """Masks personal data and truncates, before any message reaches Discord."""
+    for pattern, placeholder in _PII_PATTERNS:
+        message = pattern.sub(placeholder, message)
+    if len(message) > MAX_REASON_LENGTH:
+        message = message[:MAX_REASON_LENGTH] + " […truncado]"
+    return message
 
 
 def _format_local(ts) -> tuple[str, str]:
@@ -37,9 +66,10 @@ def _send_to_discord(content: str, description: str) -> None:
         logger.warning(f"DISCORD_WEBHOOK_URL not set; skipping {description}.")
         return
 
+    user_id = config.DISCORD_ALERT_USER_ID
     payload = {
         "content": content,
-        "allowed_mentions": {"users": [ALERT_MENTION_USER_ID]},
+        "allowed_mentions": {"users": [user_id] if user_id else []},
     }
 
     try:
@@ -53,10 +83,10 @@ def _send_to_discord(content: str, description: str) -> None:
 def send_failure_alert(flow, flow_run, state) -> None:
     """Prefect on_failure hook: posts a formatted failure message to Discord."""
     data, hora = _format_local(getattr(state, "timestamp", None))
-    message = getattr(state, "message", None) or "Sem detalhes."
+    message = _redact_pii(getattr(state, "message", None) or "Sem detalhes.")
 
     content = (
-        f"<@{ALERT_MENTION_USER_ID}>\n"
+        f"{_mention_prefix()}"
         "**❌ O pipeline diário falhou**\n\n"
         f"**Execução:** {flow_run.name}\n"
         f"**Data:** {data}\n"
@@ -93,7 +123,7 @@ def send_status_coverage_alert(
 
     body = "\n\n".join(sections)
     content = (
-        f"<@{ALERT_MENTION_USER_ID}>\n"
+        f"{_mention_prefix()}"
         "**⚠️ A lista de situações da origem mudou**\n\n"
         f"**Tabela:** {table_name}\n"
         f"{body}\n\n"
@@ -118,7 +148,7 @@ def send_staleness_alert(stale_tables: dict[str, float | None], max_age_hours: f
         for table, age in sorted(stale_tables.items())
     )
     content = (
-        f"<@{ALERT_MENTION_USER_ID}>\n"
+        f"{_mention_prefix()}"
         "**🕒 O data warehouse está desatualizado**\n\n"
         f"{listed}\n\n"
         f"Limite esperado: {max_age_hours:.0f}h desde a última escrita.\n"

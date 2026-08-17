@@ -34,6 +34,10 @@ class Config:
     # 4. ALERTAS (opcional)
     # ====================================
     DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
+    # Id do usuário mencionado nas falhas, para o alerta gerar push no celular
+    # independente da configuração de notificação do canal. Fora do código: é um
+    # identificador de conta pessoal e este repositório é público.
+    DISCORD_ALERT_USER_ID = os.getenv("DISCORD_ALERT_USER_ID")
 
     REQUIRED_VARS: ClassVar[list[str]] = [
         "DB_NAME", "DB_USER", "DB_PASSWORD",

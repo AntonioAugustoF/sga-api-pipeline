@@ -1,0 +1,223 @@
+# Roadmap — ETL to ELT Migration
+
+A living document. It records the design of the migration from the current
+architecture (business rules in pandas, explicit loading in Python) to ELT
+(Python only lands raw data; dbt produces dimensions and facts).
+
+Restore point: tags `v1.0.0-etl` and `v1.0.1-etl`, plus a full dump under
+`C:\backups\`. Any phase can be abandoned without loss.
+
+---
+
+## 1. Migration principle
+
+**Nothing is deleted before it is reconciled.** Every migrated entity runs in
+parallel with the current pipeline until a test compares the two tables row by
+row and passes. Only then is the old path removed.
+
+This is why the migration is slow, and it is why it is safe. The warehouse
+serves Power BI in production; there is no window for "let's see if it works".
+
+**Build order is not cutover order.** SCD2 is the riskiest part, but facts
+depend on dimensions — so the snapshots are *built* early (Phase 3) and *cut
+over* late (Phase 5), running in parallel the whole time.
+
+---
+
+## 2. Current state to target state
+
+| Today | Target |
+|---|---|
+| `extract/*.py` → JSON in `data/raw/` | `extract/*.py` → `raw.<entity>` (append-only jsonb) |
+| `transform/*.py` (8 files, business rules in pandas) | `dbt/models/staging/` + `dbt/models/intermediate/` |
+| `load/scd2.py` (hand-rolled SCD2) | `dbt snapshot` |
+| `load/load_dimensions.py`, `load_facts.py` | `dbt/models/marts/` materialized as `table` |
+| `load/load_invoice_vehicle_bridge.py` | a model under `intermediate/` |
+| `infra/sync_table_schema` alters production | dbt owns the schema; the function is deleted |
+| Power BI reads `public` | Power BI reads `analytics` |
+
+Prefect remains the orchestrator. The flow shrinks to `extract → dbt build`.
+
+---
+
+## 3. Phases
+
+### Phase 0 — Raw landing layer ✅
+
+**Goal:** have a place where raw data lands without any rule applied to it.
+
+**Delivered**
+- Schema `raw` in PostgreSQL, versioned in `sql/ddl/010_raw_schema.sql`.
+- One table per entity: `_extracted_at timestamptz`, `_endpoint text`,
+  `payload jsonb`.
+- A generic writer in `infra/raw_writer.py`, shared by all nine entities.
+
+**Decisions locked in**
+- `payload` is the whole JSON, unflattened. Flattening is transformation.
+- Append-only. This is what allows any past day to be reprocessed without
+  re-extracting, and it is the property that actually defines ELT — not the
+  tooling.
+- `assert_extraction_complete` still runs **before** the write. A partial
+  extraction never reaches `raw`.
+- The batch timestamp is generated once per write, not per row, and the insert
+  runs in a single transaction. A `max(_extracted_at)` filter in staging can
+  therefore never select a truncated batch.
+
+**Completed** 2026-08-18. All nine tables land on the daily run, in parallel
+with the existing pipeline, with no change to its behaviour. `raw.customers`
+and `raw.vehicles` already reconcile against the production dimensions
+(11,100 and 17,948 rows).
+
+---
+
+### Phase 1 — Pilot: `dim_regionals`
+
+**Goal:** prove the end-to-end pattern on the entity that is cheapest to get
+wrong.
+
+**Deliverables**
+- `staging/stg_sga__regionals.sql` — flattens the jsonb, casts, renames.
+- `marts/dim_regionals.sql` — materialized as `table`.
+- A singular test comparing `analytics.dim_regionals` against
+  `public.dim_regionals` row by row.
+- The dbt naming convention and folder structure, fixed here in writing.
+
+**Done when:** the reconciliation test passes on two consecutive daily runs.
+The old path is **not** removed in this phase.
+
+**Risk:** low. Few rows, no SCD2, no dependents.
+
+---
+
+### Phase 2 — Remaining simple dimensions
+
+`dim_cooperatives`, `dim_statuses`, `dim_status_invoice`, `dim_volunteers`.
+
+Repeats the Phase 1 pattern. No new architectural decisions — this is volume of
+work, not of judgement. It is where the first Jinja macros appear, once the
+repetition between staging models becomes obvious.
+
+**Done when:** all of them reconcile.
+
+---
+
+### Phase 3 — SCD2 via `dbt snapshot`
+
+`dim_vehicles` and `dim_customers`. The most important phase in this roadmap.
+
+**Why it matters:** the stranded-version bug (1,289 vehicles and 565 customers
+whose `valido_ate` was closed and never reopened, stranding R$ 11M of
+attribution) is the class of bug that `dbt snapshot` makes impossible — it
+manages `dbt_valid_from` / `dbt_valid_to` in a single transaction.
+
+**Deliverables**
+- `dbt/snapshots/` using the `check` strategy over the business columns.
+- An explicit `sk_vehicle` ↔ `dbt_scd_id` mapping. Power BI consumes the current
+  surrogate keys; the equivalence must be documented before cutover.
+- Reconciliation along **two axes**: exactly one current version per natural key,
+  and full history compared against `public`.
+
+**Done when:** both reconcile and the `assert_one_current_version_per_*` tests
+pass against `analytics`.
+
+**Risk:** high. History corrupted here cannot be recovered from the API — the
+API only returns current state. The dump under `C:\backups\` is the only net.
+
+---
+
+### Phase 4 — Facts, bridge and delinquency
+
+`fact_invoices`, `int_invoice_vehicle_bridge`, `fact_delinquency_snapshot`.
+
+**Deliverables**
+- Facts built on top of the Phase 3 snapshots.
+- The bridge as an `intermediate/` model, keeping the existing fan-out test.
+- The current delinquency models (`int_delinquency_by_vehicle`,
+  `mart_delinquency_*`) repointed from `source('warehouse', ...)` to `ref()`.
+
+**Debts addressed in this phase** (see §5):
+- `data_referencia` comes from the data, not from the run date.
+- Monetary columns typed `NUMERIC` — rewriting the models is the only cheap
+  moment to do this.
+- `valor_pagamento` given one consistent type across `fact_invoices` and
+  `fact_delinquency_snapshot`.
+
+**Done when:** the facts reconcile and the known 46-boleto divergence (§5) still
+covers exactly those 46 — no more, no fewer.
+
+---
+
+### Phase 5 — Cutover
+
+**Deliverables**
+- Power BI repointed to `analytics`, via `mart_delinquency_point_in_time` and
+  the other marts.
+- `transform/` and `load/` deleted.
+- `infra/sync_table_schema` deleted — dbt becomes the schema owner.
+- The Prefect flow reduced to `extract → dbt build`.
+- `infra/freshness.py` pointed at the `analytics` tables.
+- `sql/ddl/000_baseline.sql` regenerated.
+- Tag `v2.0.0-elt`.
+
+**Done when:** a full day runs without the old code and the dead-man's switch
+stays quiet.
+
+---
+
+## 4. Optional phases (post-migration)
+
+Independent of each other. None blocks the others.
+
+**A — DuckDB in CI.** A second target in `profiles.yml`. Allows a full
+`dbt build` on GitHub Actions without provisioning Postgres. Resolves issue #9
+(dbt tests not scheduled) at no cost.
+
+**B — BigQuery.** A third target. The free tier (10 GB storage, 1 TB queried per
+month) is far above the current volume of ~191k rows. The exercise is precisely
+to demonstrate that, with dbt, changing warehouse means changing `profiles.yml`
+and fixing dialect-specific SQL.
+
+**C — `dlt` (dlthub).** Replaces the hand-written Phase 0 writer with an EL
+library that does schema inference and incremental loading. Only worth doing
+once the raw layer is stable — replacing the implementation of something that
+works is cheap; replacing the design is not.
+
+**D — `dbt docs generate` + exposures.** Documents lineage all the way to Power
+BI. High portfolio value, low cost.
+
+---
+
+## 5. Known facts the migration must preserve
+
+A record of what has already been investigated, so it is not re-discovered as if
+it were a new bug during reconciliation.
+
+- **46 divergent boletos** between `fact_delinquency_snapshot.valor_boleto` and
+  `fact_invoices.valor_boleto` (293 of 191,255 rows, 0.39%). The ratios cluster
+  at 0.5, 2.0 and sevenths; for 29 of the 46 the most recent snapshot agrees
+  with `fact_invoices` again. **Conclusion: legitimate history-versus-current
+  behaviour, not corruption.** Phase 4 reconciliation must find exactly these 46.
+- **Orphan vehicle `3738`** in the bridge. Covered by
+  `assert_no_orphan_vehicles_in_bridge` with `error_if: '>1'`.
+- **Monetary columns are `double precision`.** The rateio reconstruction error
+  sits around 1e-13, far below the 0.005 tolerance — not urgent, but Phase 4 is
+  the cheap moment to fix it.
+- **`data_referencia` uses the run date**, not the date of the data. Fixed in
+  Phase 4.
+- **Python is installed per-user (HKCU).** Three production entry points depend
+  on the absolute path to `python.exe`. Any environment change during the
+  migration has to account for this.
+
+---
+
+## 6. Tracking
+
+| Phase | Scope | Status |
+|---|---|---|
+| 0 | Raw landing layer | **done** — 9 tables, 2026-08-18 |
+| 1 | Pilot `dim_regionals` | not started |
+| 2 | Simple dimensions | not started |
+| 3 | SCD2 via `dbt snapshot` | not started |
+| 4 | Facts, bridge, delinquency | not started |
+| 5 | Cutover | not started |
+| A–D | Optional | not started |

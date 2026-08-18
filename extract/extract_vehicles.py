@@ -9,6 +9,7 @@ from infra.authenticator import authenticate_user
 from infra.config import config
 from infra.extraction_guard import assert_extraction_complete
 from infra.logger import get_logger
+from infra.raw_writer import write_raw_shadow
 
 logger = get_logger(__name__)
 
@@ -69,6 +70,7 @@ def run_vehicle_extraction() -> str:
             json.dump(unique_vehicles, f, ensure_ascii=False, indent=2)
 
         logger.info(f"File successfully saved to: {output_path}")
+        write_raw_shadow("vehicles", "/listar/veiculo", unique_vehicles)
         return output_path
 
     except Exception as e:

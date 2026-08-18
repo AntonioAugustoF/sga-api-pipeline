@@ -9,6 +9,7 @@ from infra.authenticator import authenticate_user
 from infra.config import config
 from infra.extraction_guard import assert_extraction_complete
 from infra.logger import get_logger
+from infra.raw_writer import write_raw_shadow
 
 logger = get_logger(__name__)
 
@@ -75,6 +76,7 @@ def run_customer_extraction() -> str:
             json.dump(unique_customers, f, ensure_ascii=False, indent=2)
 
         logger.info(f"File successfully saved to: {output_path}")
+        write_raw_shadow("customers", "/listar/associado", unique_customers)
         return output_path
 
     except Exception as e:

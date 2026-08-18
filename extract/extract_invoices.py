@@ -8,6 +8,7 @@ from infra.authenticator import authenticate_user
 from infra.config import config
 from infra.extraction_guard import assert_extraction_complete
 from infra.logger import get_logger
+from infra.raw_writer import write_raw_shadow
 from infra.retry import with_retry
 
 logger = get_logger(__name__)
@@ -182,6 +183,7 @@ def run_invoice_extraction():
             json.dump(all_records, f, ensure_ascii=False, indent=2)
 
         logger.info(f"File successfully saved to: {output_path}")
+        write_raw_shadow("invoices", "/listar/boleto", all_records)
         return output_path
 
     except Exception as e:

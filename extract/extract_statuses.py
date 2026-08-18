@@ -6,6 +6,7 @@ from infra.api_fetcher import APIFetcher
 from infra.authenticator import authenticate_user
 from infra.config import config
 from infra.logger import get_logger
+from infra.raw_writer import write_raw_shadow
 
 logger = get_logger(__name__)
 
@@ -41,6 +42,7 @@ def run_status_extraction() -> list[str]:
                 json.dump(records, f, ensure_ascii=False, indent=2)
 
             logger.info(f"File successfully saved to: {output_path}")
+            write_raw_shadow(entity, endpoint, records)
             output_paths.append(output_path)
 
         return output_paths

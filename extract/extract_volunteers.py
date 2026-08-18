@@ -6,6 +6,7 @@ from infra.api_fetcher import APIFetcher, deduplicate_by_key
 from infra.authenticator import authenticate_user
 from infra.config import config
 from infra.logger import get_logger
+from infra.raw_writer import write_raw_shadow
 
 logger = get_logger(__name__)
 
@@ -48,6 +49,7 @@ def run_volunteer_extraction() -> str:
             json.dump(unique_volunteers, f, ensure_ascii=False, indent=2)
 
         logger.info(f"File successfully saved to: {output_path}")
+        write_raw_shadow("volunteers", "/listar/voluntario/{situacao}", unique_volunteers)
         return output_path
 
     except Exception as e:

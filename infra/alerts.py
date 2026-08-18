@@ -157,3 +157,23 @@ def send_staleness_alert(stale_tables: dict[str, float | None], max_age_hours: f
     )
 
     _send_to_discord(content, "staleness alert")
+
+
+def send_raw_landing_alert(entity: str, reason: str) -> None:
+    """Warns that an extraction batch did not reach the raw layer.
+    
+    During the ELT migration the raw layer runs in partial and nothing consumes
+    it yet, so this failure is invisible everywhere else — the pipeline succeeds
+    and the warehouse stays correct. Without this alert the gap would only be
+    discovered when a dbt model is finally built on top of it.
+    """
+    content = (
+        f"{_mention_prefix()}"
+        "**📥 Uma extração não chegou na camada raw**\n\n"
+        f"**Entidade:** `{entity}`\n"
+        f"**Motivo:** {_redact_pii(reason)}\n\n"
+        "O pipeline em produção não foi afetado. A camada raw ficou com um buraco "
+        "nesta data e precisará de reprocessamento antes da migração dessa entidade."
+    )
+
+    _send_to_discord(content, "raw landing alert")

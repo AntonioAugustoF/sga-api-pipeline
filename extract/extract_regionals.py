@@ -6,6 +6,7 @@ from infra.api_fetcher import APIFetcher, deduplicate_by_key
 from infra.authenticator import authenticate_user
 from infra.config import config
 from infra.logger import get_logger
+from infra.raw_writer import write_raw_shadow
 
 logger = get_logger(__name__)
 
@@ -48,6 +49,10 @@ def run_regional_extraction() -> str:
             json.dump(unique_regionals, f, ensure_ascii=False, indent=2)
 
         logger.info(f"File successfully saved to: {output_path}")
+        # Shadow write for the ELT migration. Runs after the file write on
+        # purpose: the file is what the current pipeline consumes, so it must
+        # never wait on a layer that nothing reads yet.
+        write_raw_shadow("regionals", "/listar/regional/ativo", unique_regionals)
         return output_path
 
     except Exception as e:

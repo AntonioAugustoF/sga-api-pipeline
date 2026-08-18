@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import text
 
@@ -47,7 +47,7 @@ def write_raw(entity: str, endpoint: str, records: list[dict]) -> datetime:
             f"pipeline zero records means the extraction failed, not that the source is empty."
         )
 
-    extracted_at = datetime.now(timezone.utc)
+    extracted_at = datetime.now(UTC)
     statement = text(
         f"INSERT INTO {RAW_SCHEMA}.{entity} (_extracted_at, _endpoint, payload) "
         "VALUES (:extracted_at, :endpoint, CAST(:payload as jsonb))"

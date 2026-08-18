@@ -3,8 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from infra.raw_writer import KNOWN_ENTITIES
-from infra.raw_writer import write_raw
+from infra.raw_writer import KNOWN_ENTITIES, write_raw
 
 
 def test_rejects_an_unknown_entity():

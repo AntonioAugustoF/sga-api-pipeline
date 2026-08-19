@@ -35,6 +35,12 @@ sources:
             tests: [not_null]
           - name: vigente
             tests: [not_null]
+          
+      - name: dim_regionals
+        description: Written by the pandas path. Read only to reconcile against dim_regionals.
+        columns:
+          - name: codigo_regional
+            tests: [unique, not_null]
 
       - name: dim_status
         columns:

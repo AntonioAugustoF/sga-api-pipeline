@@ -1,0 +1,15 @@
+version: 2
+
+models:
+  - name: stg_sga__regionals
+    description: >
+      One row per regional in the most recent extraction batch, with string
+      columns normalised exactly as the pandas path normalises them.
+    columns:
+      - name: codigo_regional
+        description: >
+          Natural key. The pandas path calls drop_duplicates here; this asserts
+          uniqueness instead. A silent dedupe hides a source that started
+          returning conflicting rows, which is the failure mode section 6 of
+          CLAUDE.md exists to prevent.
+        tests: [unique, not_null]

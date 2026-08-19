@@ -13,6 +13,8 @@ models:
     # No +schema here: dbt concatenates the custom schema to the target schema,
     # and profiles.yml already points to 'analytics' — keeping both would result in
     # analytics_analytics.
+    staging:
+      +materialized: view
     intermediate:
       +materialized: view
     marts:

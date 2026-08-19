@@ -1,0 +1,24 @@
+version: 2
+
+sources:
+  - name: sga
+    description: >
+      Raw API payloads landed by extract/, one row per record, untouched.
+      Append-only: every run adds a batch, and a batch shares one _extracted_at.
+    schema: raw
+
+    freshness:
+      warn_after: {count: 26, period: hour}
+      error_after: {count: 48, period: hour}
+    loaded_at_field: _extracted_at
+
+    tables:
+      - name: regionals
+      - name: cooperatives
+      - name: statuses
+      - name: invoice_statuses
+      - name: volunteers
+      - name: customers
+      - name: vehicles
+      - name: invoices
+      - name: delinquency

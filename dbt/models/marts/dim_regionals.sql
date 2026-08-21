@@ -21,8 +21,8 @@ select
     situacao,
     situacao_origem,
 
-    -- Audit columns required by section 3.4 of CLAUDE.md. Only criado_em is
-    -- emitted: the table is fully rebuilt on every run, so there is no
+    -- Every final table carries audit columns. Only criado_em is
+    -- emitted here: the table is fully rebuilt on every run, so there is no
     -- created-versus-updated distinction to record. That distinction becomes
     -- real in phase 3, where snapshots track it per version.
     {{ dbt.current_timestamp() }} as criado_em,

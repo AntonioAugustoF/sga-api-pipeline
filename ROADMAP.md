@@ -70,7 +70,7 @@ and `raw.vehicles` already reconcile against the production dimensions
 
 ---
 
-### Phase 1 — Pilot: `dim_regionals`
+### Phase 1 — Pilot: `dim_regionals` ✅
 
 **Goal:** prove the end-to-end pattern on the entity that is cheapest to get
 wrong.
@@ -86,6 +86,10 @@ wrong.
 The old path is **not** removed in this phase.
 
 **Risk:** low. Few rows, no SCD2, no dependents.
+
+**Completed** 2026-08-21. The reconciliation test returns zero rows and has done so
+against separate daily production writes. The pandas path still runs and still
+writes `public.dim_regionals`.
 
 ---
 
@@ -199,6 +203,16 @@ it were a new bug during reconciliation.
   behaviour, not corruption.** Phase 4 reconciliation must find exactly these 46.
 - **Orphan vehicle `3738`** in the bridge. Covered by
   `assert_no_orphan_vehicles_in_bridge` with `error_if: '>1'`.
+- **Cooperatives `37` and `65` exist only as hand-written rows.** They were
+  inserted directly into `public.dim_cooperatives` to unblock a foreign key —
+  three customers and two vehicles reference them — and carry null audit
+  columns plus an unnormalised, misspelt name (`Cooperativa excluida da base`,
+  no accent). No code reproduced them, so rebuilding from the baseline would
+  have broken the constraint. Phase 2 replaced the patch with a derived rule in
+  `int_cooperatives_inferred`: any cooperative referenced by a customer or
+  vehicle but absent from the API. The misspelling is reproduced verbatim on
+  purpose and should be fixed at cutover, when there is no legacy table left to
+  match.
 - **Monetary columns are `double precision`.** The rateio reconstruction error
   sits around 1e-13, far below the 0.005 tolerance — not urgent, but Phase 4 is
   the cheap moment to fix it.
@@ -215,8 +229,8 @@ it were a new bug during reconciliation.
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Raw landing layer | **done** — 9 tables, 2026-08-18 |
-| 1 | Pilot `dim_regionals` | not started |
-| 2 | Simple dimensions | not started |
+| 1 | Pilot `dim_regionals` | **done** — 2026-08-21 |
+| 2 | Simple dimensions | in review — 4 dimensions reconciling |
 | 3 | SCD2 via `dbt snapshot` | not started |
 | 4 | Facts, bridge, delinquency | not started |
 | 5 | Cutover | not started |

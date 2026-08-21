@@ -10,6 +10,39 @@ models:
         description: >
           Natural key. The pandas path calls drop_duplicates here; this asserts
           uniqueness instead. A silent dedupe hides a source that started
-          returning conflicting rows, which is the failure mode section 6 of
-          CLAUDE.md exists to prevent.
+          returning conflicting rows. Reporting success over incomplete data
+          is the failure mode this pipeline exists to prevent.
+        tests: [unique, not_null]
+
+  - name: stg_sga__cooperatives
+    description: >
+      One row per cooperative in the most recent extraction batch. COLS_TO_DROP
+      is declared in transform_cooperatives.py but never applied, so every
+      column survives into the dimension; this model reproduces that.
+    columns:
+      - name: codigo_cooperativa
+        description: Natural key. Asserted rather than deduped.
+        tests: [unique, not_null]
+
+  - name: stg_sga__statuses
+    description: >
+      Registration status reference list for customers and vehicles. Filtered
+      by the API user's permissions, so a code the user cannot see is simply
+      absent from the response rather than raising an error.
+    columns:
+      - name: codigo_situacao
+        tests: [unique, not_null]
+      - name: situacao_ativa
+        description: >
+          Whether the status itself is still in use by the source system — not
+          whether the customer or vehicle carrying it is active.
+
+  - name: stg_sga__invoice_statuses
+    description: >
+      Invoice status reference list. considerado_inadimplencia and pago encode
+      business rules that live only in the source API, so persisting them makes
+      the delinquency models auditable.
+    columns:
+      - name: codigo_situacao_boleto
+        description: Renamed from the source's codigo_situacaoboleto.
         tests: [unique, not_null]

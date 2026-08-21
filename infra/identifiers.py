@@ -8,7 +8,8 @@ valor, nunca identificador). A única defesa possível é whitelist.
 
 Um nome fora do padrão significa uma de duas coisas, e ambas devem parar a
 carga em vez de virar SQL: dado hostil, ou schema drift real na origem — que
-hoje merece exceção, não `logger.warning` (CLAUDE.md, seção 6).
+hoje merece exceção, não `logger.warning` — falhar alto em vez de degradar
+em silêncio.
 """
 
 import re

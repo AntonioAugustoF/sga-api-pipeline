@@ -47,6 +47,18 @@ sources:
           - name: codigo_situacao
             tests: [unique, not_null]
 
+      - name: dim_cooperatives
+        description: Written by the pandas path. Read only to reconcile against the dbt model.
+        columns:
+          - name: codigo_cooperativa
+            tests: [unique, not_null]
+
+      - name: dim_status_invoice
+        description: Written by the pandas path. Read only to reconcile against the dbt model.
+        columns:
+          - name: codigo_situacao_boleto
+            tests: [unique, not_null]
+
       - name: dim_volunteers
         columns:
           - name: codigo_voluntario

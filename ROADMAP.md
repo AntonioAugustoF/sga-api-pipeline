@@ -224,6 +224,13 @@ it were a new bug during reconciliation.
   vehicle but absent from the API. The misspelling is reproduced verbatim on
   purpose and should be fixed at cutover, when there is no legacy table left to
   match.
+- **`sql/ddl/000_baseline.sql` could not be replayed onto an empty database.**
+  `pg_dump -n public` emits `CREATE SCHEMA public`, which every new database
+  already has, so the restore point failed on line 25 the first time anything
+  tried to use it — discovered when CI applied it to a fresh container. CI drops
+  the schema first; the dump is left untouched, because regenerating it would
+  silently reinstate the line. Worth remembering if the baseline is ever needed
+  for an actual restore.
 - **Monetary columns are `double precision`.** The rateio reconstruction error
   sits around 1e-13, far below the 0.005 tolerance — not urgent, but Phase 4 is
   the cheap moment to fix it.

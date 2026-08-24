@@ -79,6 +79,12 @@ jobs:
      # versioned, so CI builds against the same structure production has.
      - name: Create the warehouse schema
        run: |
+         # pg_dump -n public emits CREATE SCHEMA public, but every new database
+         # already has one, so the baseline cannot be replayed onto a fresh
+         # database without dropping it first. The fix belongs here rather than
+         # in the dump: the next pg_dump regeneration would silently reinstate
+         # the line. This database is a throwaway container.
+         psql -h localhost -U postgres -d sga_dw -v ON_ERROR_STOP=1 -c "DROP SCHEMA IF EXISTS public CASCADE"
          psql -h localhost -U postgres -d sga_dw -v ON_ERROR_STOP=1 -f sql/ddl/000_baseline.sql
          psql -h localhost -U postgres -d sga_dw -v ON_ERROR_STOP=1 -f sql/ddl/010_raw_schema.sql
          psql -h localhost -U postgres -d sga_dw -v ON_ERROR_STOP=1 -c "CREATE SCHEMA IF NOT EXISTS analytics"

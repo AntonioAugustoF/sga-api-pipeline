@@ -172,9 +172,20 @@ stays quiet.
 
 Independent of each other. None blocks the others.
 
-**A — DuckDB in CI.** A second target in `profiles.yml`. Allows a full
-`dbt build` on GitHub Actions without provisioning Postgres. Resolves issue #9
-(dbt tests not scheduled) at no cost.
+**A — dbt in CI.** ✅ A throwaway PostgreSQL service container on the runner,
+created from the versioned DDL, running `dbt build --empty`: every model and
+test reaches a real database with `limit 0`, so the SQL is validated without any
+fixture to maintain.
+
+DuckDB was the original plan and was the wrong call. The staging layer uses
+`pg_input_is_valid` and `at time zone`, neither of which DuckDB shares, so a
+green DuckDB build would say nothing about the SQL that runs in production. The
+same-dialect container is both more faithful and simpler — no second target in
+`profiles.yml`.
+
+This only partly answers issue #9. The build runs; the data assertions still do
+not, because `--empty` makes every test pass vacuously. Seeding fixtures into
+`raw` and `public` is the next increment.
 
 **B — BigQuery.** A third target. The free tier (10 GB storage, 1 TB queried per
 month) is far above the current volume of ~191k rows. The exercise is precisely
@@ -234,4 +245,5 @@ it were a new bug during reconciliation.
 | 3 | SCD2 via `dbt snapshot` | not started |
 | 4 | Facts, bridge, delinquency | not started |
 | 5 | Cutover | not started |
-| A–D | Optional | not started |
+| A | dbt in CI | **done** — 2026-08-21 |
+| B–D | Optional | not started |

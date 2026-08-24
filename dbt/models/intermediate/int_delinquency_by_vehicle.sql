@@ -10,6 +10,20 @@
 -- Known limitation: qtd_veiculos_boleto comes from the bridge and is always the current
 -- count. There is no historical record of invoice composition, so a change in the number
 -- of vehicles prorates the past using today's allocation logic.
+--
+-- The sources are imported as CTEs rather than aliased inline. Under
+-- dbt build --empty a source is replaced by a subquery that already carries
+-- its own alias, and a second alias right after it is invalid SQL.
+
+with snapshot as (
+
+    select * from {{ source('warehouse', 'fact_delinquency_snapshot') }}
+
+), bridge as (
+
+    select * from {{ source('warehouse', 'bridge_invoices_vehicles') }}
+
+)
 
 select
     f.codigo_boleto,
@@ -23,6 +37,6 @@ select
     b.codigo_veiculo,
     b.qtd_veiculos_boleto,
     f.valor_boleto / b.qtd_veiculos_boleto as valor_rateado
-from {{ source('warehouse', 'fact_delinquency_snapshot') }} f
-left join {{ source('warehouse', 'bridge_invoices_vehicles') }} b
+from snapshot f
+left join bridge b
     on b.codigo_boleto = f.codigo_boleto

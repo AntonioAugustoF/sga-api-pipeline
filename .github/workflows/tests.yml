@@ -37,3 +37,58 @@ jobs:
 
       - name: Run tests
         run: pytest -v
+
+  dbt:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sga_dw
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: sga_dw
+      PGPASSWORD: postgres
+
+    steps:
+     - name: Checkout repository
+       uses: actions/checkout@v4
+
+     - name: Set up Python
+       uses: actions/setup-python@v5
+       with:
+         python-version: "3.13"
+         cache: "pip"
+
+     - name: Install dependencies
+       run: pip install -r requirements.txt
+     
+     # A throwaway warehouse with the real schema and no rows. The DDL is
+     # versioned, so CI builds against the same structure production has.
+     - name: Create the warehouse schema
+       run: |
+         psql -h localhost -U postgres -d sga_dw -v ON_ERROR_STOP=1 -f sql/ddl/000_baseline.sql
+         psql -h localhost -U postgres -d sga_dw -v ON_ERROR_STOP=1 -f sql/ddl/010_raw_schema.sql
+         psql -h localhost -U postgres -d sga_dw -v ON_ERROR_STOP=1 -c "CREATE SCHEMA IF NOT EXISTS analytics"
+
+     # --empty runs every model with limit 0: the SQL reaches the database and
+     # is validated for real, without any data to seed. It catches the class of
+     # error dbt parse cannot — a missing comma, a dropped CTE, a misplaced
+     # closing brace — which is exatcly what broke phases 1 and 2 locally.
+     - name: Build every dbt node against an empty warehouse
+       working-directory: dbt
+       run: |
+         dbt parse
+         dbt build --empty

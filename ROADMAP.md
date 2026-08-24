@@ -93,7 +93,7 @@ writes `public.dim_regionals`.
 
 ---
 
-### Phase 2 — Remaining simple dimensions
+### Phase 2 — Remaining simple dimensions ✅
 
 `dim_cooperatives`, `dim_statuses`, `dim_status_invoice`, `dim_volunteers`.
 
@@ -103,29 +103,77 @@ repetition between staging models becomes obvious.
 
 **Done when:** all of them reconcile.
 
+**Completed** 2026-08-24. All four reconcile against production data. Two
+warnings stand by design: the known orphan vehicle and the two inferred
+cooperatives, both of which fail the build if they grow.
+
 ---
 
 ### Phase 3 — SCD2 via `dbt snapshot`
 
-`dim_vehicles` and `dim_customers`. The most important phase in this roadmap.
+`dim_vehicles` and `dim_customers`. The most important phase in this roadmap,
+and the only one that moves *history keeping* rather than transformation.
 
 **Why it matters:** the stranded-version bug (1,289 vehicles and 565 customers
 whose `valido_ate` was closed and never reopened, stranding R$ 11M of
-attribution) is the class of bug that `dbt snapshot` makes impossible — it
-manages `dbt_valid_from` / `dbt_valid_to` in a single transaction.
+attribution) happened because closing a version and opening the next were two
+separate statements, and the second depended on a set recomputed after the
+first. `load/scd2.py` works around it today by materialising `_changed_` up
+front, with a comment explaining the danger. A snapshot does both sides in one
+MERGE, so the bug is not fixed — it becomes unrepresentable.
 
-**Deliverables**
-- `dbt/snapshots/` using the `check` strategy over the business columns.
-- An explicit `sk_vehicle` ↔ `dbt_scd_id` mapping. Power BI consumes the current
-  surrogate keys; the equivalence must be documented before cutover.
-- Reconciliation along **two axes**: exactly one current version per natural key,
-  and full history compared against `public`.
+**What makes this phase different:** `dim_regionals` can be dropped and rebuilt
+from the API tomorrow. `dim_vehicles` cannot. The API returns current state
+only, so the 3,136 historical vehicle versions and 1,684 customer versions exist
+nowhere else. They were accumulated one day at a time over months of operation
+and are the hardest asset in the project to replace.
+
+**Four things `dbt snapshot` does not do**, all of which `load/scd2.py` does:
+
+1. *Reproduce existing history.* A fresh snapshot starts empty and builds
+   forward. The history has to be transplanted.
+2. *Refresh non-monitored columns in place.* `scd2.py` updates unmonitored
+   attributes on the open version without opening a new one. With `check_cols`,
+   anything off the list freezes at its captured value.
+3. *Reach back before first capture.* `EPOCH_DATE = 1900-01-01` makes a new
+   key's first version cover facts that predate its discovery. dbt stamps
+   `dbt_valid_from` at snapshot time, so an invoice issued before a vehicle was
+   first seen would resolve to no version at all.
+4. *Maintain integer surrogate keys.* `sk_vehicle` and `sk_customer` are SERIAL
+   and referenced by 316,833 fact rows. dbt generates `dbt_scd_id`, an md5 hash.
+
+**Design decisions**
+
+- **Snapshot only the monitored columns.** Descriptive attributes are joined
+  from current state at the mart layer. This resolves point 2 and is the
+  cleaner dimensional answer anyway: versioning an address was never intended.
+- **Surrogate key becomes a deterministic hash** of (natural key,
+  `valido_de`). Stable across rebuilds and machines, no sequence to maintain.
+  This is the one change in the whole migration visible outside the repository:
+  **Power BI has to rebuild the relationship once.**
+- **The EPOCH rule moves to the mart** as a window function over each key's
+  first version.
+- `vigente` disappears as a stored column. In the snapshot model it is a
+  consequence of `dbt_valid_to is null`, not a fact to keep in sync.
+
+**Sub-phases**, each its own pull request:
+
+- **3a — Transplant the history.** Populate the snapshot table from
+  `public.dim_vehicles` and `dim_customers`, deriving `dbt_scd_id`,
+  `dbt_valid_from` and `dbt_valid_to`. No dbt yet. Reconciled on version counts
+  and timeline coverage. Writes to a new table, so a failure loses nothing.
+- **3b — Run the snapshot.** `dbt snapshot` continues from where the transplant
+  stopped. Runs in parallel for several days with a test comparing open versions
+  on both sides.
+- **3c — The mart models.** `dim_vehicles` and `dim_customers` over the
+  snapshot, applying the hash surrogate key, the EPOCH rule and the join of
+  non-monitored attributes.
 
 **Done when:** both reconcile and the `assert_one_current_version_per_*` tests
 pass against `analytics`.
 
-**Risk:** high. History corrupted here cannot be recovered from the API — the
-API only returns current state. The dump under `C:\backups\` is the only net.
+**Risk:** high. History corrupted here cannot be recovered from the API. The
+dump under `C:\backups\` is the only net.
 
 ---
 
@@ -231,6 +279,18 @@ it were a new bug during reconciliation.
   the schema first; the dump is left untouched, because regenerating it would
   silently reinstate the line. Worth remembering if the baseline is ever needed
   for an actual restore.
+- **Thirty customers carry impossible dates.** Birth years such as 2972, 7973
+  and 9975, and birth dates in the future that yield a negative age. The pandas
+  path made them invisible rather than reporting them: `datetime64[ns]` spans
+  only 1677 to 2262, so `to_datetime(errors="coerce")` returned NaT and the
+  warehouse stored NULL. `stg_sga__customers` keeps what the source actually
+  said and `assert_customer_dates_are_plausible` reports it, warning at one and
+  failing at thirty-one. None of the affected columns is monitored, so none
+  affects SCD2 versioning.
+- **`campos_opcionais` holds a leaked Python repr.** The pandas path calls
+  `str()` on a list, so the warehouse stores
+  `['sem campo opcional cadastrado']` with single quotes. The dbt model emits
+  real JSON and the column is excluded from reconciliation on purpose.
 - **Monetary columns are `double precision`.** The rateio reconstruction error
   sits around 1e-13, far below the 0.005 tolerance — not urgent, but Phase 4 is
   the cheap moment to fix it.
@@ -248,8 +308,8 @@ it were a new bug during reconciliation.
 |---|---|---|
 | 0 | Raw landing layer | **done** — 9 tables, 2026-08-18 |
 | 1 | Pilot `dim_regionals` | **done** — 2026-08-21 |
-| 2 | Simple dimensions | in review — 4 dimensions reconciling |
-| 3 | SCD2 via `dbt snapshot` | not started |
+| 2 | Simple dimensions | **done** — 2026-08-24 |
+| 3 | SCD2 via `dbt snapshot` | in progress |
 | 4 | Facts, bridge, delinquency | not started |
 | 5 | Cutover | not started |
 | A | dbt in CI | **done** — 2026-08-21 |

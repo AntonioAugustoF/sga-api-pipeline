@@ -46,3 +46,31 @@ models:
       - name: codigo_situacao_boleto
         description: Renamed from the source's codigo_situacaoboleto.
         tests: [unique, not_null]
+
+  - name: stg_sga__vehicles
+    description: >
+      One row per vehicle in the most recent extraction batch, normalised as
+      transform/transform_vehicles.py normalises it. Reconciles against the
+      current version of public.dim_vehicles on 52 of 53 columns; the exception
+      is campos_opcionais, documented in the reconciliation test.
+    columns:
+      - name: codigo_veiculo
+        description: >
+          Natural key, and the key the snapshot versions on. Uniqueness matters
+          more here than in a simple dimension: a duplicate would make the
+          snapshot open two competing versions for the same vehicle.
+        tests: [unique, not_null]
+
+  - name: stg_sga__customers
+    description: >
+      One row per customer in the most recent extraction batch. descricao_situacao
+      is mapped from the raw status list rather than from dim_status, preserving
+      the source's original casing, and idade is recomputed on every run.
+    columns:
+      - name: codigo_associado
+        tests: [unique, not_null]
+      - name: idade
+        description: >
+          Age in full years, double precision to match the legacy column: pandas
+          has no nullable integer, so a single null promoted the series to float.
+          Negative for the customers whose birth date is in the future.

@@ -158,16 +158,19 @@ and are the hardest asset in the project to replace.
 
 **Sub-phases**, each its own pull request:
 
-- **3a — Transplant the history.** Populate the snapshot table from
-  `public.dim_vehicles` and `dim_customers`, deriving `dbt_scd_id`,
-  `dbt_valid_from` and `dbt_valid_to`. No dbt yet. Reconciled on version counts
-  and timeline coverage. Writes to a new table, so a failure loses nothing.
-- **3b — Run the snapshot.** `dbt snapshot` continues from where the transplant
-  stopped. Runs in parallel for several days with a test comparing open versions
-  on both sides.
+- **3a — Stage the two entities.** ✅ 2026-08-24. `stg_sga__vehicles` and
+  `stg_sga__customers`, reconciled against the current version of both
+  dimensions. This was a prerequisite the original plan missed: a monitored
+  column normalised differently here would make the first snapshot run see a
+  change on every row.
+- **3b — Transplant the history and start the snapshot.** ✅ 2026-08-24.
+  `sql/migrations/001_transplant_scd2_history.sql` copies all 33,870 versions
+  into snapshot-shaped tables; `dbt snapshot` then ran and inserted **zero**
+  rows, which is the proof that staging matches the transplanted open versions
+  exactly. Both timelines are compared in full on every build.
 - **3c — The mart models.** `dim_vehicles` and `dim_customers` over the
   snapshot, applying the hash surrogate key, the EPOCH rule and the join of
-  non-monitored attributes.
+  non-monitored attributes. Not started.
 
 **Done when:** both reconcile and the `assert_one_current_version_per_*` tests
 pass against `analytics`.

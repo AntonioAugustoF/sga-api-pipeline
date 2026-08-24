@@ -16,3 +16,35 @@ models:
     columns:
       - name: sk_vehicle
         description: Substitute key of the active record in dt_referencia.
+  - name: dim_vehicles
+    description: >
+      Type 2 dimension over snap_vehicles. The eight monitored columns are
+      versioned; every descriptive attribute is Type 1, joined from current
+      state, and therefore carries today's value on every version of a key.
+    columns:
+      - name: sk_vehicle
+        description: >
+          The snapshot's dbt_scd_id: a deterministic hash of the natural key and
+          the version's start. Replaces the SERIAL key, which could not survive
+          a rebuild. Power BI has to rebuild its relationship once.
+        tests: [unique, not_null]
+      - name: codigo_veiculo
+        description: Natural key. Repeats across versions, so it is not unique.
+        tests: [not_null]
+      - name: valido_de
+        description: >
+          The first version of a key starts at 1900-01-01 so that facts
+          predating its discovery still resolve to it.
+        tests: [not_null]
+
+  - name: dim_customers
+    description: >
+      Type 2 dimension over snap_customers, on the same contract as
+      dim_vehicles with five monitored columns instead of eight.
+    columns:
+      - name: sk_customer
+        tests: [unique, not_null]
+      - name: codigo_associado
+        tests: [not_null]
+      - name: valido_de
+        tests: [not_null]

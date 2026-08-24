@@ -109,7 +109,7 @@ cooperatives, both of which fail the build if they grow.
 
 ---
 
-### Phase 3 — SCD2 via `dbt snapshot`
+### Phase 3 — SCD2 via `dbt snapshot` ✅
 
 `dim_vehicles` and `dim_customers`. The most important phase in this roadmap,
 and the only one that moves *history keeping* rather than transformation.
@@ -168,9 +168,12 @@ and are the hardest asset in the project to replace.
   into snapshot-shaped tables; `dbt snapshot` then ran and inserted **zero**
   rows, which is the proof that staging matches the transplanted open versions
   exactly. Both timelines are compared in full on every build.
-- **3c — The mart models.** `dim_vehicles` and `dim_customers` over the
-  snapshot, applying the hash surrogate key, the EPOCH rule and the join of
-  non-monitored attributes. Not started.
+- **3c — The mart models.** ✅ 2026-08-24. `dim_vehicles` and `dim_customers`
+  over the snapshots, as mixed dimensions: the monitored columns are Type 2 and
+  come from the snapshot, every descriptive attribute is Type 1 and joined from
+  current state. The surrogate key is the snapshot's own `dbt_scd_id`, already a
+  deterministic hash of the natural key and the version's start. Current
+  versions reconcile in full against `public`.
 
 **Done when:** both reconcile and the `assert_one_current_version_per_*` tests
 pass against `analytics`.
@@ -294,6 +297,13 @@ it were a new bug during reconciliation.
   `str()` on a list, so the warehouse stores
   `['sem campo opcional cadastrado']` with single quotes. The dbt model emits
   real JSON and the column is excluded from reconciliation on purpose.
+- **`dbt build --empty` must never run against the real warehouse.** dbt writes
+  the `limit 0` into the view definitions, so every staging view is left
+  permanently empty until a normal `dbt build` recreates them. Snapshots and
+  tables survive; views do not. It ran once by mistake during phase 3c, and the
+  symptom was misleading: every descriptive column in the marts came back NULL,
+  which read like a broken join rather than an empty source. CI is safe because
+  its database is a throwaway container.
 - **Monetary columns are `double precision`.** The rateio reconstruction error
   sits around 1e-13, far below the 0.005 tolerance — not urgent, but Phase 4 is
   the cheap moment to fix it.
@@ -312,7 +322,7 @@ it were a new bug during reconciliation.
 | 0 | Raw landing layer | **done** — 9 tables, 2026-08-18 |
 | 1 | Pilot `dim_regionals` | **done** — 2026-08-21 |
 | 2 | Simple dimensions | **done** — 2026-08-24 |
-| 3 | SCD2 via `dbt snapshot` | in progress |
+| 3 | SCD2 via `dbt snapshot` | **done** — 2026-08-24 |
 | 4 | Facts, bridge, delinquency | not started |
 | 5 | Cutover | not started |
 | A | dbt in CI | **done** — 2026-08-21 |

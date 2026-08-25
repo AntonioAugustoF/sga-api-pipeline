@@ -5,6 +5,10 @@
 -- The relations are imported as CTEs rather than aliased inline. Under
 -- dbt build --empty a relation is replaced by a subquery that already carries
 -- its own alias, and a second alias right after it is invalid SQL.
+--
+-- Reads the dbt models rather than the tables the pandas path writes. Until
+-- this changed, the analytics layer still depended on public and the cutover
+-- could not begin.
 
 with delinquency as (
 
@@ -12,7 +16,7 @@ with delinquency as (
 
 ), vehicles as (
 
-    select * from {{ source('warehouse', 'dim_vehicles') }}
+    select * from {{ ref('dim_vehicles') }}
 
 )
 

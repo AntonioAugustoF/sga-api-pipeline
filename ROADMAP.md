@@ -298,9 +298,11 @@ it were a new bug during reconciliation.
   `['sem campo opcional cadastrado']` with single quotes. The dbt model emits
   real JSON and the column is excluded from reconciliation on purpose.
 - **`dbt build --empty` must never run against the real warehouse.** dbt writes
-  the `limit 0` into the view definitions, so every staging view is left
-  permanently empty until a normal `dbt build` recreates them. Snapshots and
-  tables survive; views do not. It ran once by mistake during phase 3c, and the
+  the `limit 0` into the relations themselves, so every view and every table is
+  left empty until a normal `dbt build` recreates them. Only snapshots and
+  incremental models survive — a snapshot is not rebuilt, and an incremental
+  merge from an empty source changes nothing. It ran by mistake during both
+  phase 3c and phase 4b, and the
   symptom was misleading: every descriptive column in the marts came back NULL,
   which read like a broken join rather than an empty source. CI is safe because
   its database is a throwaway container.

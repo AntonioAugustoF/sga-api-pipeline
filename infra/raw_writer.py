@@ -3,7 +3,6 @@ from datetime import UTC, datetime
 
 from sqlalchemy import text
 
-from infra.alerts import send_raw_landing_alert
 from infra.db_connector import get_db_engine
 from infra.logger import get_logger
 
@@ -67,21 +66,3 @@ def write_raw(entity: str, endpoint: str, records: list[dict]) -> datetime:
 
     logger.info(f"raw.{entity}: {len(rows)} records landed at {extracted_at.isoformat()}.")
     return extracted_at
-
-
-def write_raw_shadow(entity: str, endpoint: str, records: list[dict]) -> None:
-    """Lands a batch in raw without letting a raw-layer failure break the pipeline.
-    
-    Temporary, and valid only while raw runs in parallel with the file-based path
-    (phases 0 to 4 of the ELT migration). Raising here would let a bug in a layer
-    nothing consumes yet take production down.
-    
-    THis is not silent degradation: the failure raises a Discord alert, which is
-    the loud part. Delete this function at cutover, when raw becomes the only
-    source and failing to land must stop the flow.
-    """
-    try:
-        write_raw(entity, endpoint, records)
-    except Exception as e:
-        logger.error(f"Failed to land raw.{entity}: {e}")
-        send_raw_landing_alert(entity, str(e))

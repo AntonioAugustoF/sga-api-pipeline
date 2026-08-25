@@ -185,23 +185,39 @@ dump under `C:\backups\` is the only net.
 
 ### Phase 4 — Facts, bridge and delinquency
 
-`fact_invoices`, `int_invoice_vehicle_bridge`, `fact_delinquency_snapshot`.
+`fact_invoices`, `bridge_invoices_vehicles`, `fact_delinquency_snapshot`.
 
-**Deliverables**
-- Facts built on top of the Phase 3 snapshots.
-- The bridge as an `intermediate/` model, keeping the existing fan-out test.
-- The current delinquency models (`int_delinquency_by_vehicle`,
-  `mart_delinquency_*`) repointed from `source('warehouse', ...)` to `ref()`.
+**What this phase turned out to be about.** The plan treated facts as ordinary
+models. They are not: all three *accumulate*. Extraction fetches what is new,
+paid or rescheduled, never the full history, so the raw layer holds 7,580
+invoices against 316,918 in the fact and 39 daily snapshots exist where raw
+covers a week. Every one of them needs the same treatment phase 3 needed —
+incremental materialisation plus a transplant — and none can be rebuilt from
+source. A table materialisation would have dropped 98% of the revenue history
+with every test still green.
 
-**Debts addressed in this phase** (see §5):
-- `data_referencia` comes from the data, not from the run date.
-- Monetary columns typed `NUMERIC` — rewriting the models is the only cheap
-  moment to do this.
-- `valor_pagamento` given one consistent type across `fact_invoices` and
-  `fact_delinquency_snapshot`.
+**Debts closed here** (see §5): `data_referencia` now comes from the data rather
+than the run date; monetary columns are `numeric`; `valor_pagamento` and
+`dias_em_atraso` have one consistent type across both facts, as do
+`data_pagamento` and `data_credito_banco`.
 
-**Done when:** the facts reconcile and the known 46-boleto divergence (§5) still
-covers exactly those 46 — no more, no fewer.
+**Sub-phases**, each its own pull request:
+
+- **4a — Stage invoices.** ✅ 2026-08-25. `stg_sga__invoices`, with the five
+  business rules from `transform/business_rules.py` expressed in SQL.
+- **4b — `fact_invoices` incremental.** ✅ 2026-08-25. All 316,918 invoices
+  reconcile across 46 columns.
+- **4c — The bridge.** ✅ 2026-08-25. 382,755 pairs; `qtd_veiculos_boleto`
+  exact, `valor_rateado` within 5e-12.
+- **4d — `fact_delinquency_snapshot`.** ✅ 2026-08-25. 262,034 rows over 39 days,
+  reconciling exactly on all 44 compared columns with no tolerance needed
+  anywhere.
+- **4e — Repoint the delinquency models.** `int_delinquency_by_vehicle` and
+  `mart_delinquency_*` still read `source('warehouse', ...)`. Until they use
+  `ref()`, the analytics layer is not self-contained and phase 5 cannot start.
+
+**Done when:** the facts reconcile, nothing in `analytics` reads from `public`,
+and the value-drift set (§5) is identical on both sides.
 
 ---
 
@@ -261,11 +277,14 @@ BI. High portfolio value, low cost.
 A record of what has already been investigated, so it is not re-discovered as if
 it were a new bug during reconciliation.
 
-- **46 divergent boletos** between `fact_delinquency_snapshot.valor_boleto` and
-  `fact_invoices.valor_boleto` (293 of 191,255 rows, 0.39%). The ratios cluster
-  at 0.5, 2.0 and sevenths; for 29 of the 46 the most recent snapshot agrees
-  with `fact_invoices` again. **Conclusion: legitimate history-versus-current
-  behaviour, not corruption.** Phase 4 reconciliation must find exactly these 46.
+- **Invoices whose value was revised after a snapshot was taken.** The snapshot
+  records what an invoice was worth on a given day; `fact_invoices` records what
+  it is worth now, so the two legitimately disagree once a value changes. This
+  was recorded as 46 invoices across 293 rows; by 2026-08-25 it was 63 across
+  471, and it grows with ordinary business activity. **Legitimate
+  history-versus-current behaviour, not corruption.** Phase 4 therefore asserts
+  that the dbt models reproduce the legacy's drift set exactly rather than
+  pinning a count — a fixed threshold here would fail on normal operation.
 - **Orphan vehicle `3738`** in the bridge. Covered by
   `assert_no_orphan_vehicles_in_bridge` with `error_if: '>1'`.
 - **Cooperatives `37` and `65` exist only as hand-written rows.** They were
@@ -325,7 +344,7 @@ it were a new bug during reconciliation.
 | 1 | Pilot `dim_regionals` | **done** — 2026-08-21 |
 | 2 | Simple dimensions | **done** — 2026-08-24 |
 | 3 | SCD2 via `dbt snapshot` | **done** — 2026-08-24 |
-| 4 | Facts, bridge, delinquency | not started |
+| 4 | Facts, bridge, delinquency | 4a–4d done; 4e pending |
 | 5 | Cutover | not started |
 | A | dbt in CI | **done** — 2026-08-21 |
 | B–D | Optional | not started |

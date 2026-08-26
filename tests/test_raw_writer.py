@@ -22,8 +22,8 @@ def test_allowlist_matches_the_ddl():
     """The allowlist and the DDL are two lists of the same thing.
     
     Nothing else checks that they agree: an entity missing here is rejected at
-    write time and swallowed by write_raw_shadow, so the table simply stays
-    empty while the pipeline keeps reporting success.
+    write time, and until the shadow writer was removed that rejection was
+    swallowed: the table stayed empty while the pipeline reported success.
     """
     ddl = Path("sql/ddl/010_raw_schema.sql").read_text(encoding="utf-8")
     declared = set(re.findall(r"CREATE TABLE IF NOT EXISTS raw\.(\w+)", ddl))

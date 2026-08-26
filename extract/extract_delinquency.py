@@ -5,7 +5,7 @@ from datetime import datetime
 from extract.extract_invoices import _fetch_by_status
 from infra.authenticator import authenticate_user
 from infra.logger import get_logger
-from infra.raw_writer import write_raw_shadow
+from infra.raw_writer import write_raw
 
 logger = get_logger(__name__)
 
@@ -28,7 +28,7 @@ def run_delinquency_extraction():
             json.dump(records, f, ensure_ascii=False, indent=2)
 
         logger.info(f"File successfully saved to: {output_path}")
-        write_raw_shadow("delinquency", "/listar/boleto?codigo_situacao=2", records)
+        write_raw("delinquency", "/listar/boleto?codigo_situacao=2", records)
         return output_path
 
     except Exception as e:

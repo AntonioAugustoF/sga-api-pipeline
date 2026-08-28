@@ -103,9 +103,21 @@ repetition between staging models becomes obvious.
 
 **Done when:** all of them reconcile.
 
-**Completed** 2026-08-24. All four reconcile against production data. Two
-warnings stand by design: the known orphan vehicle and the two inferred
-cooperatives, both of which fail the build if they grow.
+**Completed** 2026-08-28, after being recorded as complete on the 24th with
+only three of its four dimensions built. Nothing caught that: there is no test
+for a model that does not exist, and `dbt build` validates what is there.
+
+`dim_volunteers` turned out to be more than a missing file. It was the first
+entity where the API stopped returning members, which exposed a semantics
+difference that had been invisible until then: `load_dimensions.py` upserts and
+never deletes, so the legacy dimension accumulates every key it has ever seen,
+while a `table` materialisation rebuilds from current state. Four volunteers
+referenced by thirteen vehicles and 204 invoices would have been dropped.
+
+All five simple dimensions are therefore incremental, seeded by
+`sql/migrations/005_transplant_simple_dimensions.sql`, and the customer and
+vehicle staging models select the latest known row per key rather than the keys
+in the latest batch.
 
 ---
 
@@ -325,6 +337,14 @@ it were a new bug during reconciliation.
   symptom was misleading: every descriptive column in the marts came back NULL,
   which read like a broken join rather than an empty source. CI is safe because
   its database is a throwaway container.
+- **The two paths must run at the same cadence, or reconciliation measures the
+  schedule.** The pandas path runs nightly; dbt ran on demand until 2026-08-28.
+  Three days of drift collapsed 59 SCD2 transitions into one date, lost two
+  entire days of `fact_delinquency_snapshot` (14,057 rows), and left 194
+  invoices with a stale `dias_em_atraso`. None of it was recoverable by running
+  dbt again — a daily photograph cannot be taken retroactively — so `public` was
+  copied back by migrations 006 and 007. `dbt build` now runs inside the Prefect
+  flow. This was filed as issue #9 and treated as debt; it was a prerequisite.
 - **Monetary columns are `double precision`.** The rateio reconstruction error
   sits around 1e-13, far below the 0.005 tolerance — not urgent, but Phase 4 is
   the cheap moment to fix it.

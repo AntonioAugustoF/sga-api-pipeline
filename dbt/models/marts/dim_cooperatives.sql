@@ -1,7 +1,18 @@
 -- Materialized as a table, overriding the project default of view: dimensions
 -- are consumed by Power BI, and a view would re-run the whole staging chain on
 -- every visual refresh.
-{{ config(materialized = 'table') }}
+-- Incremental for the reason spelled out in dim_regionals: the legacy path
+-- accumulates and never deletes, so rebuilding from current state would drop
+-- whatever the API stops returning.
+{{
+    config(
+        materialized = 'incremental',
+        unique_key = 'codigo_cooperativa',
+        incremental_strategy = 'merge',
+        merge_exclude_columns = ['criado_em'],
+        on_schema_change = 'fail',
+    )
+}}
 
 with from_source as (
 

@@ -74,3 +74,13 @@ models:
           Age in full years, double precision to match the legacy column: pandas
           has no nullable integer, so a single null promoted the series to float.
           Negative for the customers whose birth date is in the future.
+
+  - name: stg_sga__volunteers
+    description: >
+      One row per volunteer in the most recent extraction batch. The only entity
+      whose COLS_TO_DROP is actually applied in the pandas path, and the only one
+      carrying a nested list — cooperativas, serialised to a comma-separated
+      string of codigo_cooperativa.
+    columns:
+      - name: codigo_voluntario
+        tests: [unique, not_null]

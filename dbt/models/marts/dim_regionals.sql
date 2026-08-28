@@ -1,7 +1,22 @@
 -- Materialized as a table, overrding the project default of the view: this
 -- dimension is consumed by Power BI, and a view would re-run the whole staging
 -- chain on every visual refresh.
-{{ config(materialized = 'table') }}
+-- Incremental, not a table. load_dimensions.py upserts and never deletes, so
+-- the legacy dimension accumulates every key it has ever seen. Rebuilding from
+-- current state instead would silently drop anything the API stops returning,
+-- leaving facts that reference it pointing at nothing. Seeded by
+-- sql/migrations/005_transplant_simple_dimensions.sql.
+--
+-- NEVER run with --full-refresh against the real warehouse.
+{{
+    config(
+        materialized = 'incremental',
+        unique_key = 'codigo_regional',
+        incremental_strategy = 'merge',
+        merge_exclude_columns = ['criado_em'],
+        on_schema_change = 'fail',
+    )
+}}
 
 select
     codigo_regional,

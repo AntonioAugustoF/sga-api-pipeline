@@ -6,9 +6,16 @@
 
 with latest_batch as (
 
-    select payload, _extracted_at
+    -- The latest known row for every key ever seen, not the keys in the
+    -- latest batch. load_dimensions.py upserts and never deletes, so the
+    -- legacy dimension keeps a member the API has stopped returning; a
+    -- max(_extracted_at) filter would drop it, and the snapshot version
+    -- would survive with every descriptive attribute null.
+    select distinct on (payload ->> 'codigo_associado')
+        payload,
+        _extracted_at
     from {{ source('sga', 'customers') }}
-    where _extracted_at = (select max(_extracted_at) from {{ source('sga', 'customers') }})
+    order by payload ->> 'codigo_associado', _extracted_at desc
 
 ), status_lookup as (
 

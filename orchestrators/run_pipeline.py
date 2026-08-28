@@ -10,6 +10,7 @@ from extract.extract_vehicles import run_vehicle_extraction
 from extract.extract_volunteers import run_volunteer_extraction
 from infra.alerts import send_failure_alert
 from infra.config import config
+from infra.dbt_runner import run_dbt_build
 from infra.logger import get_logger
 from load.load_delinquency_snapshot import run_delinquency_snapshot_load
 from load.load_dimensions import run_dimensions_load
@@ -60,6 +61,12 @@ def run_pipeline():
     run_facts_load()
     run_bridge_load()
     run_delinquency_snapshot_load()
+
+    # The dbt layer builds in the same flow, on the same data, on the same night.
+    # It ran on demand until 2026-08-28, and three days of drift were enough to
+    # collapse fifty-nine version transitions into a single date. Reconciliation
+    # between the two paths only means something while both run at one cadence.
+    run_dbt_build()
 
     logger.info("Pipeline finished successfully.")
 

@@ -345,6 +345,20 @@ it were a new bug during reconciliation.
   dbt again — a daily photograph cannot be taken retroactively — so `public` was
   copied back by migrations 006 and 007. `dbt build` now runs inside the Prefect
   flow. This was filed as issue #9 and treated as debt; it was a prerequisite.
+- **Running the flow twice in one day makes the two paths disagree, and only
+  one of them is wrong.** It happened on 2026-08-28: the nightly run at 03:02
+  on the pre-dbt code, then the rebuilt flow by hand at 16:11. The pandas path
+  cannot represent a second observation — `valido_de` is a `DATE`, so the
+  second change of the day overwrites the first, and
+  `load_delinquency_snapshot.py` deletes `dt_referencia` and reinserts it. dbt
+  has timestamp grain and merges without deleting, so it recorded both: 25 SCD2
+  versions that open and close on the same date, and 58 boletos that were open
+  in the morning and settled by the afternoon. dbt kept the more accurate
+  record; it was discarded anyway, by migrations 008 and 009, because the
+  legacy path is the reference until cutover and a same-date version pair also
+  makes the point-in-time joins ambiguous. The unified flow runs once a night,
+  so this does not recur on its own — but a manual run on a day the schedule
+  already fired reproduces it exactly.
 - **Monetary columns are `double precision`.** The rateio reconstruction error
   sits around 1e-13, far below the 0.005 tolerance — not urgent, but Phase 4 is
   the cheap moment to fix it.

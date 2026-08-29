@@ -224,9 +224,11 @@ than the run date; monetary columns are `numeric`; `valor_pagamento` and
 - **4d — `fact_delinquency_snapshot`.** ✅ 2026-08-25. 262,034 rows over 39 days,
   reconciling exactly on all 44 compared columns with no tolerance needed
   anywhere.
-- **4e — Repoint the delinquency models.** `int_delinquency_by_vehicle` and
-  `mart_delinquency_*` still read `source('warehouse', ...)`. Until they use
-  `ref()`, the analytics layer is not self-contained and phase 5 cannot start.
+- **4e — Repoint the delinquency models.** ✅ 2026-08-25, in the same pull
+  request as 4d. `int_delinquency_by_vehicle` and `mart_delinquency_*` read
+  `ref()`. Every model now reads either `source('sga')` or another model, so
+  the `warehouse` source survives only in the reconciliation tests — which is
+  where it belongs, and what makes phase 5 removable in one step.
 
 **Done when:** the facts reconcile, nothing in `analytics` reads from `public`,
 and the value-drift set (§5) is identical on both sides.
@@ -378,7 +380,7 @@ it were a new bug during reconciliation.
 | 1 | Pilot `dim_regionals` | **done** — 2026-08-21 |
 | 2 | Simple dimensions | **done** — 2026-08-24 |
 | 3 | SCD2 via `dbt snapshot` | **done** — 2026-08-24 |
-| 4 | Facts, bridge, delinquency | 4a–4d done; 4e pending |
+| 4 | Facts, bridge, delinquency | **done** — 2026-08-25 |
 | 5 | Cutover | not started |
 | A | dbt in CI | **done** — 2026-08-21 |
 | B–D | Optional | not started |

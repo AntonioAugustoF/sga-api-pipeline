@@ -224,9 +224,11 @@ than the run date; monetary columns are `numeric`; `valor_pagamento` and
 - **4d — `fact_delinquency_snapshot`.** ✅ 2026-08-25. 262,034 rows over 39 days,
   reconciling exactly on all 44 compared columns with no tolerance needed
   anywhere.
-- **4e — Repoint the delinquency models.** `int_delinquency_by_vehicle` and
-  `mart_delinquency_*` still read `source('warehouse', ...)`. Until they use
-  `ref()`, the analytics layer is not self-contained and phase 5 cannot start.
+- **4e — Repoint the delinquency models.** ✅ 2026-08-25, in the same pull
+  request as 4d. `int_delinquency_by_vehicle` and `mart_delinquency_*` read
+  `ref()`. Every model now reads either `source('sga')` or another model, so
+  the `warehouse` source survives only in the reconciliation tests — which is
+  where it belongs, and what makes phase 5 removable in one step.
 
 **Done when:** the facts reconcile, nothing in `analytics` reads from `public`,
 and the value-drift set (§5) is identical on both sides.
@@ -345,6 +347,20 @@ it were a new bug during reconciliation.
   dbt again — a daily photograph cannot be taken retroactively — so `public` was
   copied back by migrations 006 and 007. `dbt build` now runs inside the Prefect
   flow. This was filed as issue #9 and treated as debt; it was a prerequisite.
+- **Running the flow twice in one day makes the two paths disagree, and only
+  one of them is wrong.** It happened on 2026-08-28: the nightly run at 03:02
+  on the pre-dbt code, then the rebuilt flow by hand at 16:11. The pandas path
+  cannot represent a second observation — `valido_de` is a `DATE`, so the
+  second change of the day overwrites the first, and
+  `load_delinquency_snapshot.py` deletes `dt_referencia` and reinserts it. dbt
+  has timestamp grain and merges without deleting, so it recorded both: 25 SCD2
+  versions that open and close on the same date, and 58 boletos that were open
+  in the morning and settled by the afternoon. dbt kept the more accurate
+  record; it was discarded anyway, by migrations 008 and 009, because the
+  legacy path is the reference until cutover and a same-date version pair also
+  makes the point-in-time joins ambiguous. The unified flow runs once a night,
+  so this does not recur on its own — but a manual run on a day the schedule
+  already fired reproduces it exactly.
 - **Monetary columns are `double precision`.** The rateio reconstruction error
   sits around 1e-13, far below the 0.005 tolerance — not urgent, but Phase 4 is
   the cheap moment to fix it.
@@ -364,7 +380,7 @@ it were a new bug during reconciliation.
 | 1 | Pilot `dim_regionals` | **done** — 2026-08-21 |
 | 2 | Simple dimensions | **done** — 2026-08-24 |
 | 3 | SCD2 via `dbt snapshot` | **done** — 2026-08-24 |
-| 4 | Facts, bridge, delinquency | 4a–4d done; 4e pending |
+| 4 | Facts, bridge, delinquency | **done** — 2026-08-25 |
 | 5 | Cutover | not started |
 | A | dbt in CI | **done** — 2026-08-21 |
 | B–D | Optional | not started |

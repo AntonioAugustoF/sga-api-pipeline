@@ -25,3 +25,8 @@ logs/
 target/
 dbt_packages/
 .user.yml
+# Working notes, deliberately local. They carry unfiltered context about the
+# warehouse and about work in progress, and a `git add -A` swept them into a
+# commit once before this line existed.
+CLAUDE.md
+WORKLOG.md

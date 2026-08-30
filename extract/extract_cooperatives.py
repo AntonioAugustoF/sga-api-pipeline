@@ -1,7 +1,3 @@
-import json
-import os
-from datetime import datetime
-
 from infra.api_fetcher import APIFetcher, deduplicate_by_key
 from infra.authenticator import authenticate_user
 from infra.config import config
@@ -25,7 +21,7 @@ def extract_cooperatives_by_status(status_name: str, fetcher: APIFetcher) -> lis
     return records
 
 
-def run_cooperative_extraction() -> str:
+def run_cooperative_extraction() -> None:
     logger.info("Starting cooperative extraction pipeline...")
 
     try:
@@ -42,15 +38,7 @@ def run_cooperative_extraction() -> str:
         unique_cooperatives = deduplicate_by_key(all_records, "codigo_cooperativa")
         logger.info(f"Total extracted: {len(all_records)} | Unique: {len(unique_cooperatives)}")
 
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        output_path = os.path.join("data", "raw", f"cooperatives_{current_date}.json")
-
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(unique_cooperatives, f, ensure_ascii=False, indent=2)
-
-        logger.info(f"File successfully saved to: {output_path}")
         write_raw("cooperatives", "/listar/cooperativa/ativo", unique_cooperatives)
-        return output_path
 
     except Exception as e:
         logger.error(f"Critical failure in the cooperative extraction pipeline: {e}")

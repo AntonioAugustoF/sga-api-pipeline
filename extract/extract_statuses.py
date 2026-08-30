@@ -1,7 +1,3 @@
-import json
-import os
-from datetime import datetime
-
 from infra.api_fetcher import APIFetcher
 from infra.authenticator import authenticate_user
 from infra.config import config
@@ -18,8 +14,8 @@ STATUS_DOMAINS = {
 }
 
 
-def run_status_extraction() -> list[str]:
-    """Extracts both status reference lists (registration and invoice) to data/raw.
+def run_status_extraction() -> None:
+    """Lands both status reference lists (registration and invoice) in raw.
 
     These lists are filtered by the API user's permissions, so a status the user
     cannot see is simply absent from the response — no error is raised. Persisting
@@ -29,23 +25,13 @@ def run_status_extraction() -> list[str]:
 
     try:
         user_token = authenticate_user()
-        current_date = datetime.now().strftime("%Y-%m-%d")
         fetcher = APIFetcher(config.API_BASE_URL, user_token, timeout=60)
 
-        output_paths = []
         for entity, endpoint in STATUS_DOMAINS.items():
             records = fetcher.fetch_all(endpoint)
             logger.info(f"{entity}: {len(records)} statuses extracted from {endpoint}.")
 
-            output_path = os.path.join("data", "raw", f"{entity}_{current_date}.json")
-            with open(output_path, "w", encoding="utf-8") as f:
-                json.dump(records, f, ensure_ascii=False, indent=2)
-
-            logger.info(f"File successfully saved to: {output_path}")
             write_raw(entity, endpoint, records)
-            output_paths.append(output_path)
-
-        return output_paths
 
     except Exception as e:
         logger.error(f"Critical failure in the status extraction pipeline: {e}")

@@ -4,14 +4,14 @@
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 ![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
-![Pandas](https://img.shields.io/badge/Pandas-data-150458?logo=pandas&logoColor=white)
+![dbt](https://img.shields.io/badge/dbt-transformations-FF694B?logo=dbt&logoColor=white)
 ![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-ORM-D71F00?logo=sqlalchemy&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)
 ![Prefect](https://img.shields.io/badge/Prefect-orchestration-024DFD?logo=prefect&logoColor=white)
 ![Power BI](https://img.shields.io/badge/Power_BI-dashboards-F2C811?logo=powerbi&logoColor=black)
 
-This repository contains the implementation of a data pipeline (SGA API Pipeline) designed to extract, transform, and load data efficiently, ensuring data consistency and reliability for downstream analysis and reporting.
+This repository contains the implementation of an ELT data pipeline (SGA API Pipeline): Python lands the SGA API in PostgreSQL, dbt builds the warehouse from what landed, and Power BI reads the result. Every transformation is versioned SQL, and every guarantee the warehouse depends on is a test that runs against real rows every night.
 
 The pipeline architecture is built using modular Python scripts and industry-standard practices for clean, scalable data engineering.
 
@@ -21,43 +21,54 @@ Access structured and cleaned data ready for consumption. 💪
 
 ## Architecture Overview
 
+This is an **ELT** pipeline: Python only extracts, and every transformation is
+SQL that runs inside the warehouse. It was an ETL pipeline until the cutover in
+[`ROADMAP.md`](ROADMAP.md); the diagrams in [`static/`](static/) record how it
+got here and why.
+
 ```mermaid
 flowchart LR
     API["SGA API<br/>(external)"]
 
-    subgraph Extract["Extract"]
+    subgraph Extract["Extract (Python)"]
         EX["Paginated fetch<br/>retry + backoff"]
     end
 
-    subgraph Transform["Transform (Pandas)"]
-        TR["Clean, type-cast,<br/>business rules,<br/>value allocation"]
+    RAW[("<b>raw</b><br/>jsonb, append-only")]
+
+    subgraph DBT["Transform (dbt)"]
+        STG["staging<br/><i>typing, cleaning,<br/>business rules</i>"]
+        SNAP["snapshots<br/><i>SCD2</i>"]
+        MART["marts<br/><i>dims, facts, bridge</i>"]
+        STG --> SNAP --> MART
+        STG --> MART
     end
 
-    subgraph Load["Load"]
-        LD["Upsert / SCD2 /<br/>snapshot<br/>+ point-in-time SK"]
-    end
-
-    DW[("PostgreSQL<br/>Data Warehouse<br/>star schema")]
+    ANA[("<b>analytics</b><br/>star schema")]
     BI["Power BI<br/>dashboards"]
 
-    API --> EX --> TR --> LD --> DW --> BI
-
-    RAW[/"data/raw<br/>JSON"/]
-    PROC[/"data/processed<br/>Parquet"/]
-    EX -.-> RAW -.-> TR
-    TR -.-> PROC -.-> LD
+    API --> EX --> RAW --> STG
+    MART --> ANA --> BI
 
     subgraph Ops["Orchestration & Observability"]
         PF["Prefect flow<br/>daily cron 03:00"]
         AL["Discord alert<br/>on failure"]
-        CI["GitHub Actions<br/>pytest on push"]
+        FR["Freshness check<br/>06:00, outside Prefect"]
+        CI["GitHub Actions<br/>pytest + dbt on push"]
     end
 
     PF -. orchestrates .-> Extract
-    PF -. orchestrates .-> Transform
-    PF -. orchestrates .-> Load
+    PF -. orchestrates .-> DBT
     PF -. on failure .-> AL
+    FR -. reads .-> ANA
+    FR -. alerts if stale .-> AL
 ```
+
+The raw layer is append-only and never rewritten, so every model can be rebuilt
+from what the API actually returned. What *cannot* be rebuilt is the history the
+warehouse accumulated — the API answers about the present, and yesterday's
+answer is gone unless it was stored. That is why the facts and the SCD2
+snapshots are incremental rather than recreated, and why the backup matters.
 
 ---
 
@@ -67,8 +78,7 @@ flowchart LR
 - [Architecture & Folder Structure](#architecture--folder-structure)
 - [How It Works](#how-it-works)
   - [Data Extraction](#data-extraction)
-  - [Data Transformation](#data-transformation)
-  - [Data Load](#data-load)
+  - [Transformation and Load with dbt](#transformation-and-load-with-dbt)
   - [Data Model & Analytical Views](#data-model--analytical-views)
   - [Infrastructure & Orchestration](#infrastructure--orchestration)
 - [Entities](#entities)
@@ -89,20 +99,17 @@ The project follows a rigorous separation of concerns to ensure maintainability:
 
 ```
 sga-api-pipeline/
-├── .github/workflows/  # Continuous integration (pytest on push/PR)
-├── data/
-│   ├── raw/            # Raw JSON files extracted from the API
-│   └── processed/      # Cleaned Parquet files ready for loading
-├── dbt/                # Declarative data tests over the loaded warehouse
-├── extract/            # Extraction scripts (API connectors)
-├── infra/              # Connections, config, logging, retry, alerts
-├── load/               # Loading modules (PostgreSQL insertions)
+├── .github/workflows/  # Continuous integration (pytest + dbt on push/PR)
+├── dbt/                # The whole warehouse: models, snapshots, tests, macros
+├── extract/            # Extraction scripts (API connectors) — the only Python that touches data
+├── infra/              # Connections, config, logging, retry, alerts, raw writer,
+│                       # dbt runner, freshness check
 ├── logs/               # Application and pipeline execution logs
 ├── orchestrators/      # Prefect flow and scheduling scripts
-├── scripts/            # One-off loaders and backfills, outside the daily flow
-├── sql/                # Schema baseline (ddl/) and analytical views
+├── scripts/            # Verified warehouse backup, outside the daily flow
+├── sql/                # DDL for the raw schema (ddl/) and one-off migrations
+├── static/             # Architecture diagrams
 ├── tests/              # Unit tests (pytest)
-├── transform/          # Data cleaning, processing, and business logic (Pandas)
 ├── Dockerfile          # Pipeline application image
 └── docker-compose.yml  # Disposable PostgreSQL for local development
 ```
@@ -113,42 +120,51 @@ sga-api-pipeline/
 
 ### Data Extraction
 
-The modules inside the `/extract` folder are responsible for connecting to the SGA API. They fetch data in paginated batches across all available statuses, ensuring connection security through environment variables (`.env`). Raw data is saved as JSON files in `data/raw/`.
+The modules inside the `/extract` folder are responsible for connecting to the SGA API. They fetch data in paginated batches across all available statuses, ensuring connection security through environment variables (`.env`). Each batch is written to the `raw` schema as `jsonb`, append-only, with one `_extracted_at` timestamp shared by the whole batch and the endpoint it came from — so a model can always be traced back to the exact response that produced it.
+
+This is the only Python that touches business data, and it is deliberately dumb: it does not interpret, reshape or filter anything. A batch that does not land in full is refused rather than persisted, because `raw` is now the only source every model is built from.
 
 Invoices use a multi-window incremental strategy (by emission, payment, and due date) to capture new and recently changed records. Delinquency uses a full-history extract — querying only `status=2` (open) with no date filter — to ensure no overdue invoice is missed regardless of when it was issued.
 
 Transient server errors (HTTP 5xx, timeouts, dropped connections) are retried with exponential backoff via the shared `infra/retry.py` decorator; genuine client errors (4xx) fail fast without retrying.
 
-### Data Transformation
+### Transformation and Load with dbt
 
-Inside the `/transform` folder, data undergoes rigorous cleaning and structuring:
+Everything between `raw` and the star schema is SQL under `dbt/`, in three layers.
 
-- Data type casting and formatting.
-- Handling missing values and duplicates.
-- Serialization of nested fields (arrays and dictionaries) into flat, relational columns.
-- Business rules (aging, payment reconciliation, age) for invoices, delinquency and customers.
-- Value allocation: an invoice covering multiple vehicles is exploded into one row per vehicle, splitting `valor_boleto` evenly so `SUM(valor_rateado)` always reconstructs the original invoice value. This feeds the invoice-vehicle bridge.
-
-Cleaned data is saved as Parquet files in `data/processed/`.
-
-### Data Load
-
-The `/load` folder safely writes processed data into PostgreSQL using the following strategies:
-
-| Strategy | Tables | Behavior |
+| Layer | Materialised as | What it does |
 |---|---|---|
-| Upsert | `dim_cooperatives`, `dim_regionals`, `dim_volunteers`, `dim_status`, `dim_status_invoice`, `fact_invoices`, `bridge_invoices_vehicles` | Inserts new records; updates existing ones by natural (or composite) key |
-| SCD Type 2 | `dim_customers`, `dim_vehicles` | Tracks attribute history in place via `vigente`/`valido_de`/`valido_ate`: changes to monitored columns close the current version and open a new one; other attribute changes are refreshed without versioning. Natural keys present in the source but with no current version get one opened, so a rerun heals rows left unversioned by earlier runs |
-| Daily snapshot replace | `fact_delinquency_snapshot` | Deletes and reinserts that day's slice of open invoices; re-runs on the same day are idempotent |
+| `staging` | view | One model per entity: casts types, trims (including U+00A0), and applies the business rules — aging, payment reconciliation, age |
+| `snapshots` | snapshot | SCD Type 2 for customers and vehicles. dbt closes the old version and opens the new one in a single `MERGE` |
+| `marts` | table / incremental | The dimensions, the facts, the invoice-vehicle bridge and the delinquency marts |
 
-Cross-cutting load guarantees:
+Two choices in that table carry most of the design:
 
-- **Schema reconciliation:** before every upsert or SCD2 load, the destination table's schema is reconciled against the incoming DataFrame — missing columns are added automatically (`ALTER TABLE ... ADD COLUMN`), so new business-rule columns introduced upstream never fail with `UndefinedColumn`.
-- **Explicit typing:** each temp table is created with an explicit SQLAlchemy type map, so a column never silently lands as the wrong type (e.g. a date arriving as `TEXT`, or a nullable surrogate key drifting to `DOUBLE PRECISION`).
-- **Partial-extraction guard:** if an incoming dimension's row count drops more than 30% versus what is already loaded, the load is refused for that entity instead of silently shrinking the dimension.
-- **Status coverage guard:** the source only returns the statuses currently enabled for the API user, and a status that stops being returned is indistinguishable from one that never existed — entities in it are silently never extracted. Every load diffs the incoming status codes against the ones already in the DW and alerts on codes **added or removed**, without failing the load.
-- **Audit metadata:** rows are stamped with `criado_em`, `atualizado_em` and (where applicable) `data_referencia`. `criado_em` is immutable — excluded from the `ON CONFLICT` update — so reruns never overwrite a row's original creation timestamp.
-- **Composite & immutable keys:** `upsert_to_postgres` accepts a composite primary key (e.g. the bridge's `codigo_boleto` + `codigo_veiculo`) and a list of immutable columns to freeze on conflict.
+**The facts are incremental, not rebuilt.** Extraction fetches what is new, paid
+or rescheduled — never the full history. `raw` holds a week of invoices against
+more than 300,000 in the fact. A `table` materialisation would have dropped 98%
+of the revenue history with every test still passing, which is exactly the kind
+of silent success this project is built to prevent. The same applies to the
+bridge and to the daily delinquency snapshots: a photograph of a past day cannot
+be retaken.
+
+**The SCD2 lives in `dbt snapshot`, not in hand-written SQL.** The previous
+implementation closed a version and opened its replacement in two statements,
+and a failure between them stranded 1,289 vehicles with no current version at
+all — R$ 11M of attribution resolving to nothing. A snapshot does both in one
+`MERGE`, which makes that failure unrepresentable rather than merely fixed;
+`assert_one_open_version_per_snapshot_key` exists to prove the claim instead of
+assuming it.
+
+Value allocation still happens, now in `bridge_invoices_vehicles`: an invoice
+covering several vehicles becomes one row per vehicle with `valor_boleto` split
+across them, and `assert_rateio_reconstructs_invoice_value` holds
+`SUM(valor_rateado)` to the original invoice value.
+
+Every table carries `criado_em`, and the facts also carry `data_referencia`
+taken from the data rather than from the run date. `criado_em` sits in
+`merge_exclude_columns` on the incremental models, so a row keeps the moment it
+first appeared no matter how many times it is merged afterwards.
 
 ### Data Model & Analytical Views
 
@@ -258,7 +274,9 @@ Documented rather than glossed over, since they shape how the model should be qu
 
 **Infrastructure (`/infra`):** Manages the database connection pool (a single cached engine with `pool_pre_ping`), API authentication, environment configuration, structured logging (one log file per day), a reusable retry decorator, and failure alerting.
 
-**Orchestration (`/orchestrators`):** The full ETL flow (Extract → Transform → Load) is a Prefect flow (`run_pipeline`). On failure, an `on_failure` hook posts a formatted message to a Discord webhook — timestamps converted to America/Sao_Paulo, maintainer mentioned to trigger a mobile push — so unattended runs never fail silently.
+**Orchestration (`/orchestrators`):** The flow is `extract → dbt build`, run daily by Prefect. dbt runs *inside* the flow on purpose: while it ran on demand, three days of drift collapsed fifty-nine SCD2 transitions into a single date, and a warehouse written last night compared against one written last week measures the schedule rather than the models. A failing dbt node — a test included — stops the flow rather than letting it report success.
+
+On failure, an `on_failure` hook posts a formatted message to a Discord webhook — timestamps converted to America/Sao_Paulo, maintainer mentioned to trigger a mobile push — so unattended runs never fail silently. What that hook cannot cover is the flow never starting, which is why `infra/freshness.py` runs from the Windows Task Scheduler instead: an orchestrator cannot be the watchdog for its own death.
 
 ---
 
@@ -281,82 +299,96 @@ Documented rather than glossed over, since they shape how the model should be qu
 
 ## Testing & CI
 
-Unit tests live in `/tests` and run with `pytest`. They cover the transformation helpers, business rules, the retry decorator, the API fetcher, the dimension-drop guard, the status coverage guard, and the SCD2 behavior — including a regression test ensuring a closed version always has its replacement opened — all mocked, with no dependency on a live API or database.
+Unit tests live in `/tests` and run with `pytest`. They cover what is left of the Python: the retry decorator, the API fetcher, the raw writer and its entity allowlist, the extraction guard, the alerting, the logger and the freshness thresholds — all mocked, with no dependency on a live API or database.
 
-A GitHub Actions workflow (`.github/workflows/tests.yml`) runs the full test suite on every push and pull 
-request to `main`.
+The suite shrank from 137 tests to 41 at the cutover. Nothing was weakened: the removed tests covered removed code, and the guarantees they held are now expressed as dbt tests that run against real rows every night, which is where they belong.
+
+A GitHub Actions workflow (`.github/workflows/tests.yml`) runs two jobs on every push and pull request to `main`: `pytest` with `ruff`, and a `dbt` job that stands up a throwaway PostgreSQL container, applies the raw DDL, and runs `dbt build --empty` so every model and test reaches a real database with `limit 0`.
 
 ---
 
 ## Analytics Layer with dbt
 
-The `pytest` suite verifies Python functions. It cannot catch a warehouse that
-successfully but holds wrong data — which is what every incident in this
-project has been. `dbt/` holds declarative tests over the tables the pipeline
-already wrote.
+The `pytest` suite verifies Python functions. It cannot catch a build that
+finishes cleanly and holds wrong data — which is what every incident in this
+project has been. That is the job of the tests inside `dbt/`, which run against
+real rows on every nightly build and fail the flow when they do not pass.
 
-dbt reads the `public` schema as a source and materializes nothing there, so
-running it cannot alter the warehouse. Future models build into a separate
-`analytics` schema.
+- **Schema tests** (`dbt/models/**/*.yml`) — surrogate keys are unique and not
+  null, natural keys are never null.
+- **Singular tests** (`dbt/tests/`) — one open version per SCD2 key, no billed
+  vehicle missing from the dimension, `SUM(valor_rateado)` reconstructing
+  `valor_boleto`, the point-in-time mart not fanning out, and the customers
+  whose typed-in birth dates are impossible.
 
-- **Schema tests** (`dbt/models/warehouse/_source.yml`) — surrogate keys are
-  unique and not null, natural keys are never  null, and every `sk_customer` on a
-  fact resolves to a row in `dim_customers`.
-- **Singular tests** (`dbt/tests/`) — exactly one current SCD2 version per
-  natural key, no billed vehicle missing from the dimension, and
-  `SUM(valor_rateado)` reconstructing `valor_boleto`.
+Three of them warn rather than fail, and each threshold records a known debt at
+its exact size: one orphan vehicle, two inferred cooperatives, thirty impossible
+dates. They stay visible on every run and break the build the moment the debt
+grows.
 
-Source freshness declares the same 26-hour window as `infra/freshness.py`. The
-Python check is not redundant: it runs from the Windows Task Scheduler and must
-keep working when the rest does not.
+Twenty-two further tests existed during the migration to compare every row
+against the pandas path. They did their job — they are what surfaced the
+accumulating facts, the leaked Python `repr` in `campos_opcionais`, the
+non-breaking spaces in 245 invoice descriptions and the two-extractions-in-one-day
+divergence — and they were removed with the schema they compared against.
 
 ### Models
 
-`dbt run` three views into the `analytics` schema. Nothing in `public` is
-written, so the pipeline and the models never contend over the same objects.
+`dbt build` creates the whole `analytics` schema: nine staging views, two
+snapshots, two intermediate views and eleven marts.
 
-- `int_delinquency_by_vehicle` — the delinquency snapshot exploded by vehicle,
-  with the invoice value allocated across them. Both marts build on it.
-- `mart_delinquency_current` — attributed to whoever is responsible for the
-  vehicle **today**.
-- `mart_delinquency_point_in_time` — attributed to  whoever is responsible on
+The marts Power BI reads:
+
+- `dim_customers`, `dim_vehicles` — SCD Type 2, one row per version, with
+  `valido_de` / `valido_ate` / `vigente` derived from the snapshot.
+- `dim_regionals`, `dim_cooperatives`, `dim_volunteers`, `dim_status`,
+  `dim_status_invoice` — simple dimensions.
+- `fact_invoices`, `bridge_invoices_vehicles`, `fact_delinquency_snapshot`.
+- `mart_delinquency_current` — delinquency attributed to whoever is responsible
+  for the vehicle **today**.
+- `mart_delinquency_point_in_time` — attributed to whoever was responsible on
   the snapshot's reference date.
 
-Both marts expose `sk_vehicle`, so downstream tools can relate on the surrogate
-key instead of the natural key, which repeats across SCD2 versions and fans out.
+The two delinquency marts replace the `vw_delinquency_by_vehicle_atual` and
+`_historico` views, which lived only inside the database — unversioned,
+untested, and invisible to lineage.
 
-They replace the `vw_delinquency_by_vehicle_atual` and `_historico` views, which
-lived only inside the database — unversioned, untested, and invisible to lineage.
+`sk_vehicle` and `sk_customer` are deterministic hashes rather than serials, so
+a rebuilt warehouse produces the same keys. Downstream tools should relate on
+them and not on the natural key, which repeats across SCD2 versions and fans
+out.
 
-Materialized as views on purpose: a table would read faster but would need
-`dbt run` after every pipeline execution, which is an orchestration change. Move
-to tables when there is measured slowness, not before.
+Two rules the models must not break:
+
+- **Never `--full-refresh`** an incremental model against the real warehouse. It
+  discards accumulated history the API cannot return again.
+- **Never `dbt build --empty`** against it either. dbt bakes the `limit 0` into
+  the relations themselves, so every view and table is left empty until a normal
+  build recreates them. It is safe only against the throwaway container in CI.
 
 ### Running
 
-Unlike the pipeline, dbt does not load `.env` itself — `profiles.yml` reads the
-credentials through `env_var`, so export them first:
+The daily run needs no command — `infra/dbt_runner.py` invokes dbt from inside
+the Prefect flow and raises on any failing node.
+
+To run it by hand, note that dbt does not load `.env` itself: `profiles.yml`
+reads the credentials through `env_var`, so export them first.
 
 ```bash
 set -a; source .env; set +a
+cd dbt && dbt build
 ```
 
-From the repository root:
+Or from the repository root:
 
 ```bash
-dbt test --project-dir dbt --profiles-dir dbt
-dbt source freshness --project-dir dbt --profiles-dir dbt
+dbt build --project-dir dbt --profiles-dir dbt
 ```
 
-Or from inside `dbt/`, where `dbt_project.yml` lives:
-
-```bash
-cd dbt
-dbt test --profiles-dir .
-```
-
-`dbt-postgres` is deliberately absent from `requirements.txt`: CI has no
-database and data tests need real rows, so these run locally.
+Running it manually on a day the schedule already fired means two extractions
+in one day, and the warehouse will record the second observation as a new SCD2
+version. That is correct behaviour, but it is worth knowing before it surprises
+you.
 
 ### THe known-orphan threshold
 
@@ -428,9 +460,9 @@ python -m orchestrators.run_pipeline
 Or run individual stages:
 
 ```bash
-python -m extract.extract_volunteers
-python -m transform.transform_volunteers
-python -m load.load_dimensions
+python -m extract.extract_volunteers   # lands one entity in raw
+python -m infra.freshness              # the staleness check, on demand
+python -m scripts.backup_warehouse     # dump + verified restore
 ```
 
 Modules must be run with `python -m` **from the repository root**: imports are absolute (`from infra.config import config`), so running a file by path (`python extract/extract_volunteers.py`) puts only that file's folder on `sys.path` and fails with `ModuleNotFoundError: No module named 'infra'`.
@@ -461,11 +493,21 @@ docker compose down -v            # stop and delete the volume
 To point a run at it, override `DB_PORT=5433`. Do this deliberately: a stale
 copy on `5433` looks exactly like the real warehouse until you count the tables.
 
-To rebuild the schema in an empty instance, apply the baseline:
+To rebuild the schema in an empty instance, apply the raw DDL and let dbt
+create the rest:
 
 ```bash
-docker compose exec -T postgres psql -U "$DB_USER" -d "$DB_NAME" < sql/ddl/000_baseline.sql
+docker compose exec -T postgres psql -U "$DB_USER" -d "$DB_NAME" < sql/ddl/010_raw_schema.sql
+cd dbt && dbt build
 ```
+
+Only `raw` is versioned as DDL, because it is the only schema this project
+creates by hand. Everything in `analytics` is created by dbt from the models,
+so there is no second description of it to fall out of date. What a rebuilt
+schema will *not* have is the accumulated history — the SCD2 versions, the
+invoices and the daily delinquency snapshots the API can no longer return.
+That comes from a dump, which is what `scripts/backup_warehouse.py` exists to
+keep restorable.
 
 ---
 

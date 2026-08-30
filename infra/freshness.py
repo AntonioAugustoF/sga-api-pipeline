@@ -1,8 +1,8 @@
 """Independent staleness check for the data warehouse.
 
 Every other guard here is triggered by a flow that ran: on_failure fires when a
-flow fails, and the extraction and load guards run inside one. None of them cover
-the flow never starting. That is not hypothetical — the Prefect server's scheduler
+flow fails, and the extraction guard runs inside one. None of them cover the
+flow never starting. That is not hypothetical — the Prefect server's scheduler
 crashed and the pipeline silently stopped running for three days,
 which was not noticed by accident.
 
@@ -12,7 +12,6 @@ the warehouse and nothing else, and exits non-zero when data is stale.
 """
 
 import sys
-from datetime import datetime
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
@@ -27,26 +26,47 @@ logger = get_logger(__name__)
 # on a run that merely started late.
 MAX_AGE_HOURS = 26
 
-# Table -> column stamped when the pipeline last wrote the row. The delinquency
-# snapshot is insert-only and has no atualizado_em.
+# Table -> the column that proves the pipeline reached it.
+#
+# Choosing these columns after the cutover took some care. The obvious
+# candidate, criado_em on the facts, is wrong: it sits in merge_exclude_columns
+# so that it records when a row first appeared and survives later merges. Its
+# maximum is the age of the newest invoice, not of the last run, and a quiet
+# day with no new invoices would be reported as a dead pipeline.
+#
+# dim_customers and dim_vehicles are materialised as tables and rebuilt in full
+# on every dbt run, so every row is restamped and criado_em means what this
+# check needs it to mean.
+#
+# fact_delinquency_snapshot is watched through dt_referencia instead, which is a
+# stronger statement than a timestamp: it asserts that the photograph for the
+# day exists. Read as hours since that date's midnight it lands on the same
+# scale as the others — today's snapshot is at most 24h old, and yesterday's is
+# already past the 26h limit by the time the 06:00 check runs.
 MONITORED_TABLES = {
-    "dim_customers": "atualizado_em",
-    "dim_vehicles": "atualizado_em",
-    "fact_invoices": "atualizado_em",
-    "bridge_invoices_vehicles": "atualizado_em",
-    "fact_delinquency_snapshot": "criado_em",
+    "analytics.dim_customers": "criado_em",
+    "analytics.dim_vehicles": "criado_em",
+    "analytics.fact_delinquency_snapshot": "dt_referencia",
 }
 
 
 def collect_ages(engine: Engine) -> dict[str, float | None]:
-    """Returns hours colapsed since each monitored table was last written,  None if never."""
-    now = datetime.now()
+    """Returns hours elapsed since each monitored table was last written, None if never.
+
+    The subtraction happens in SQL rather than in Python. criado_em is
+    timestamptz and this script runs from the Windows Task Scheduler, whose
+    idea of local time need not match the server's; comparing against now()
+    inside the same session removes the question.
+    """
     ages: dict[str, float | None] = {}
 
     with engine.connect() as conn:
         for table, column in MONITORED_TABLES.items():
-            last_written = conn.execute(text(f'SELECT MAX("{column}") FROM {table}')).scalar()
-            ages[table] = None if last_written is None else (now - last_written).total_seconds() / 3600
+            statement = text(
+                f'SELECT EXTRACT(EPOCH FROM (now() - MAX("{column}")::timestamptz)) / 3600 FROM {table}'
+            )
+            age = conn.execute(statement).scalar()
+            ages[table] = None if age is None else float(age)
 
     return ages
 

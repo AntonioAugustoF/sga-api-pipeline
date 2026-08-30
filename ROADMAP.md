@@ -235,20 +235,41 @@ and the value-drift set (§5) is identical on both sides.
 
 ---
 
-### Phase 5 — Cutover
+### Phase 5 — Cutover ✅ 2026-08-29
 
-**Deliverables**
-- Power BI repointed to `analytics`, via `mart_delinquency_point_in_time` and
-  the other marts.
-- `transform/` and `load/` deleted.
-- `infra/sync_table_schema` deleted — dbt becomes the schema owner.
+Done in one pass rather than after the planned few days of parallel running.
+The waiting period was worth something concrete — reconciliation had never
+seen a month turn — and it was skipped deliberately, with a verified backup
+(`sga_warehouse_2026-08-29.dump`) and the tag `v1.1.0-pre-cutover` marking the
+last commit where both paths existed.
+
+**Delivered**
+- Power BI repointed to `analytics`. Done first: while the dashboard still
+  read `public`, deleting the loaders would have frozen it in silence.
+- The 22 reconciliation tests, the four `assert_*_matches_legacy` macros and
+  the `warehouse` source removed. Two tests that read `public` were never
+  reconciliation and stayed: `assert_no_orphan_vehicles_in_bridge`, repointed
+  to `ref()`, and `assert_customer_dates_are_plausible`, already on `ref()`.
+- `transform/` (9 modules) and `load/` (5, `sync_table_schema` included)
+  deleted, with `infra/loader.py`, `infra/transformations.py` and
+  `infra/identifiers.py`, which existed only to serve them.
 - The Prefect flow reduced to `extract → dbt build`.
-- `infra/freshness.py` pointed at the `analytics` tables.
-- `sql/ddl/000_baseline.sql` regenerated.
-- Tag `v2.0.0-elt`.
+- Extractors stopped writing `data/raw/*.json`. Nothing had read those files
+  since `infra.loader` was deleted, and a directory filling with dated JSON
+  reads like a live data path.
+- `infra/freshness.py` pointed at `analytics` — not a schema rename, see §5.
+- `sql/ddl/000_baseline.sql` **deleted rather than regenerated**. `raw` is the
+  only schema still created by hand and `010_raw_schema.sql` already is its
+  DDL; a versioned description of `analytics` would duplicate what dbt owns.
+- pandas, pyarrow and numpy dropped from `requirements.txt`.
+- README rewritten: it described a Transform (Pandas) stage that no longer
+  exists.
+- `public` **left in place**, no longer written. Dropping the schema is a
+  separate decision; it costs only disk and it is the only copy of the
+  reference outside the dump.
 
-**Done when:** a full day runs without the old code and the dead-man's switch
-stays quiet.
+**Still open:** tag `v2.0.0-elt` after a full unattended night, and drop
+`public` once there is no reason to keep it.
 
 ---
 
@@ -311,7 +332,8 @@ it were a new bug during reconciliation.
   vehicle but absent from the API. The misspelling is reproduced verbatim on
   purpose and should be fixed at cutover, when there is no legacy table left to
   match.
-- **`sql/ddl/000_baseline.sql` could not be replayed onto an empty database.**
+- **The `public` baseline dump could not be replayed onto an empty database.**
+  *(Historical: the file was deleted at the cutover.)*
   `pg_dump -n public` emits `CREATE SCHEMA public`, which every new database
   already has, so the restore point failed on line 25 the first time anything
   tried to use it — discovered when CI applied it to a fresh container. CI drops
@@ -361,6 +383,16 @@ it were a new bug during reconciliation.
   makes the point-in-time joins ambiguous. The unified flow runs once a night,
   so this does not recur on its own — but a manual run on a day the schedule
   already fired reproduces it exactly.
+- **`criado_em` on the facts is not a run stamp, and the freshness check must
+  not treat it as one.** It sits in `merge_exclude_columns` on purpose, so a row
+  keeps the moment it first appeared however many times it is merged afterwards.
+  Its maximum is therefore the age of the newest invoice, not of the last run,
+  and a quiet day would read as a dead pipeline. `infra/freshness.py` watches
+  `dim_customers` and `dim_vehicles` instead — materialised as tables and
+  rebuilt in full every run — plus `fact_delinquency_snapshot.dt_referencia`,
+  which asserts something stronger than recency: that the photograph for the day
+  exists. Read as hours since that date's midnight it lands on the same scale as
+  the timestamps, so the 26h limit needed no change.
 - **Monetary columns are `double precision`.** The rateio reconstruction error
   sits around 1e-13, far below the 0.005 tolerance — not urgent, but Phase 4 is
   the cheap moment to fix it.
@@ -381,6 +413,6 @@ it were a new bug during reconciliation.
 | 2 | Simple dimensions | **done** — 2026-08-24 |
 | 3 | SCD2 via `dbt snapshot` | **done** — 2026-08-24 |
 | 4 | Facts, bridge, delinquency | **done** — 2026-08-25 |
-| 5 | Cutover | not started |
+| 5 | Cutover | **done** — 2026-08-29 |
 | A | dbt in CI | **done** — 2026-08-21 |
 | B–D | Optional | not started |

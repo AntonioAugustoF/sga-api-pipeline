@@ -75,17 +75,14 @@ jobs:
      - name: Install dependencies
        run: pip install -r requirements.txt
      
-     # A throwaway warehouse with the real schema and no rows. The DDL is
-     # versioned, so CI builds against the same structure production has.
+     # A throwaway warehouse with the real schema and no rows.
+     #
+     # Only raw is applied from versioned DDL, because raw is the only schema
+     # this project creates by hand. Everything in analytics is created by dbt
+     # from the models in this same commit, so a second description of it here
+     # would be one more thing to drift.
      - name: Create the warehouse schema
        run: |
-         # pg_dump -n public emits CREATE SCHEMA public, but every new database
-         # already has one, so the baseline cannot be replayed onto a fresh
-         # database without dropping it first. The fix belongs here rather than
-         # in the dump: the next pg_dump regeneration would silently reinstate
-         # the line. This database is a throwaway container.
-         psql -h localhost -U postgres -d sga_dw -v ON_ERROR_STOP=1 -c "DROP SCHEMA IF EXISTS public CASCADE"
-         psql -h localhost -U postgres -d sga_dw -v ON_ERROR_STOP=1 -f sql/ddl/000_baseline.sql
          psql -h localhost -U postgres -d sga_dw -v ON_ERROR_STOP=1 -f sql/ddl/010_raw_schema.sql
          psql -h localhost -U postgres -d sga_dw -v ON_ERROR_STOP=1 -c "CREATE SCHEMA IF NOT EXISTS analytics"
 

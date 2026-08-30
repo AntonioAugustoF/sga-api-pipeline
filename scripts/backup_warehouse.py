@@ -1,11 +1,11 @@
 """Dumps the analytics schema and verifies the dump can actually be restored.
 
-The tables in analytics hold history that exists nowhere else once phase 5
-removes the pandas path: 33,870 SCD2 versions, 316,918 invoices and 39 daily
-delinquency snapshots. The API returns current state only, so none of it can be
-re-derived.
+The tables in analytics hold history that exists nowhere else now that the
+pandas path is gone: the SCD2 versions, the invoices and the daily delinquency
+snapshots. The API returns current state only, so none of it can be re-derived,
+and dbt can rebuild the models but not the history they accumulated.
 
-Verification is the point, not the dump. sql/ddl/000_baseline.sql was treated as
+Verification is the point, not the dump. The old public baseline was treated as
 a restore point for weeks and failed on line 25 the first time anything applied
 it to an empty database. A dump nobody has restored is a file, not a backup.
 """
@@ -116,7 +116,7 @@ def verify_restore(dump_path: Path) -> dict[str, int]:
 
     This is the whole reason the script exists. A dump that has never been
     restored is a file whose contents nobody has checked, and the project has
-    already been bitten once by exactly that: sql/ddl/000_baseline.sql was the
+    already been bitten once by exactly that: the public baseline dump was the
     documented restore point for weeks and failed on its twenty-fifth line the
     first time anything applied it to an empty database.
 

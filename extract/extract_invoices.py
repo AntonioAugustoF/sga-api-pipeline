@@ -1,5 +1,3 @@
-import json
-import os
 from datetime import datetime, timedelta
 
 import requests
@@ -148,7 +146,7 @@ def extract_due_date_changes(user_token, status_list) -> tuple[list, dict[str, s
     return _extract_for_all_statuses(user_token, status_list, filters, "DUE")
 
 
-def run_invoice_extraction():
+def run_invoice_extraction() -> None:
     logger.info("Starting invoice daily extraction pipeline...")
 
     try:
@@ -176,15 +174,7 @@ def run_invoice_extraction():
             f"{len(due_records)} due-date | {len(all_records)} unique after dedup"
         )
 
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        output_path = os.path.join("data", "raw", f"invoices_{current_date}.json")
-
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(all_records, f, ensure_ascii=False, indent=2)
-
-        logger.info(f"File successfully saved to: {output_path}")
         write_raw("invoices", "/listar/boleto", all_records)
-        return output_path
 
     except Exception as e:
         logger.error(f"Critical failure in the invoice daily extraction pipeline: {e}")

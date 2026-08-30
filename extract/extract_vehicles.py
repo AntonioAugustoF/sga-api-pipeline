@@ -1,7 +1,3 @@
-import json
-import os
-from datetime import datetime
-
 import requests
 
 from infra.api_fetcher import APIFetcher, deduplicate_by_key
@@ -29,12 +25,11 @@ def extract_vehicles_by_status(status_code, fetcher: APIFetcher) -> list[dict]:
     return records
 
 
-def run_vehicle_extraction() -> str:
+def run_vehicle_extraction() -> None:
     logger.info("Starting vehicle extraction pipeline...")
 
     try:
         user_token = authenticate_user()
-        current_date = datetime.now().strftime("%Y-%m-%d")
         fetcher = APIFetcher(config.API_BASE_URL, user_token, page_size=1000, timeout=60)
 
         statuses_data = fetcher.fetch_all("/listar/situacao/todos")
@@ -64,14 +59,7 @@ def run_vehicle_extraction() -> str:
         unique_vehicles = deduplicate_by_key(all_records, "codigo_veiculo")
         logger.info(f"Total extracted: {len(all_records)} | Unique: {len(unique_vehicles)}")
 
-        output_path = os.path.join("data", "raw", f"vehicles_{current_date}.json")
-
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(unique_vehicles, f, ensure_ascii=False, indent=2)
-
-        logger.info(f"File successfully saved to: {output_path}")
         write_raw("vehicles", "/listar/veiculo", unique_vehicles)
-        return output_path
 
     except Exception as e:
         logger.error(f"Critical failure in the vehicle extraction pipeline: {e}")

@@ -1,7 +1,3 @@
-import json
-import os
-from datetime import datetime
-
 from infra.api_fetcher import APIFetcher, deduplicate_by_key
 from infra.authenticator import authenticate_user
 from infra.config import config
@@ -25,7 +21,7 @@ def extract_volunteers_by_status(status_name: str, fetcher: APIFetcher) -> list[
     return records
 
 
-def run_volunteer_extraction() -> str:
+def run_volunteer_extraction() -> None:
     logger.info("Starting volunteer extraction pipeline...")
 
     try:
@@ -42,15 +38,7 @@ def run_volunteer_extraction() -> str:
         unique_volunteers = deduplicate_by_key(all_records, "codigo_voluntario")
         logger.info(f"Total extracted: {len(all_records)} | Unique: {len(unique_volunteers)}")
 
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        output_path = os.path.join("data", "raw", f"volunteers_{current_date}.json")
-
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(unique_volunteers, f, ensure_ascii=False, indent=2)
-
-        logger.info(f"File successfully saved to: {output_path}")
         write_raw("volunteers", "/listar/voluntario/{situacao}", unique_volunteers)
-        return output_path
 
     except Exception as e:
         logger.error(f"Critical failure in the volunteer extraction pipeline: {e}")

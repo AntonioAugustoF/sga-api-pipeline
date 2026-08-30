@@ -1,7 +1,3 @@
-import json
-import os
-from datetime import datetime
-
 from infra.api_fetcher import APIFetcher, deduplicate_by_key
 from infra.authenticator import authenticate_user
 from infra.config import config
@@ -25,7 +21,7 @@ def extract_regionals_by_status(status_name: str, fetcher: APIFetcher) -> list[d
     return records
 
 
-def run_regional_extraction() -> str:
+def run_regional_extraction() -> None:
     logger.info("Starting regional extraction pipeline...")
 
     try:
@@ -42,19 +38,7 @@ def run_regional_extraction() -> str:
         unique_regionals = deduplicate_by_key(all_records, "codigo_regional")
         logger.info(f"Total extracted: {len(all_records)} | Unique: {len(unique_regionals)}")
 
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        output_path = os.path.join("data", "raw", f"regionals_{current_date}.json")
-
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(unique_regionals, f, ensure_ascii=False, indent=2)
-
-        logger.info(f"File successfully saved to: {output_path}")
-        # Runs after the file write because the pandas path still consumes the
-        # file. A failure here now propagates: the analytics layer is built
-        # entirely from raw, so a batch that does not land is missing data, not
-        # a gap in something nobody reads.
         write_raw("regionals", "/listar/regional/ativo", unique_regionals)
-        return output_path
 
     except Exception as e:
         logger.error(f"Critical failure in the regional extraction pipeline: {e}")

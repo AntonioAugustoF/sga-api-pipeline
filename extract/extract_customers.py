@@ -1,7 +1,3 @@
-import json
-import os
-from datetime import datetime
-
 import requests
 
 from infra.api_fetcher import APIFetcher, deduplicate_by_key
@@ -29,24 +25,17 @@ def extract_customers_by_status(status_code, fetcher: APIFetcher) -> list[dict]:
     return records
 
 
-def run_customer_extraction() -> str:
+def run_customer_extraction() -> None:
     logger.info("Starting customer extraction pipeline...")
 
     try:
         user_token = authenticate_user()
-        current_date = datetime.now().strftime("%Y-%m-%d")
         fetcher = APIFetcher(config.API_BASE_URL, user_token, page_size=1000, timeout=60)
 
         statuses_data = fetcher.fetch_all("/listar/situacao/todos")
 
         status_list = [s["codigo_situacao"] for s in statuses_data]
         logger.info(f"Statuses found to extract: {status_list}")
-
-        status_lookup = {str(s["codigo_situacao"]): s["descricao_situacao"] for s in statuses_data}
-        lookup_path = os.path.join("data", "raw", f"customers_status_lookup_{current_date}.json")
-        with open(lookup_path, "w", encoding="utf-8") as f:
-            json.dump(status_lookup, f, ensure_ascii=False, indent=2)
-        logger.info(f"Status lookup saved to: {lookup_path}")
 
         all_records = []
         failures: dict[str, str] = {}
@@ -70,14 +59,7 @@ def run_customer_extraction() -> str:
         unique_customers = deduplicate_by_key(all_records, "codigo_associado")
         logger.info(f"Total extracted: {len(all_records)} | Unique: {len(unique_customers)}")
 
-        output_path = os.path.join("data", "raw", f"customers_{current_date}.json")
-
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(unique_customers, f, ensure_ascii=False, indent=2)
-
-        logger.info(f"File successfully saved to: {output_path}")
         write_raw("customers", "/listar/associado", unique_customers)
-        return output_path
 
     except Exception as e:
         logger.error(f"Critical failure in the customer extraction pipeline: {e}")

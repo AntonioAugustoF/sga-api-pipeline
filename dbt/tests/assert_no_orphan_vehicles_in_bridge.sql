@@ -8,17 +8,17 @@
 -- situation list fix. The contract is the limit — this debt cannot
 -- grow, and the second orphan breaks the build
 --
--- The sources are imported as CTEs rather than aliased inline. Under
--- dbt build --empty a source is replaced by a subquery that already carries
+-- The relations are imported as CTEs rather than aliased inline. Under
+-- dbt build --empty a ref is replaced by a subquery that already carries
 -- its own alias, and a second alias right after it is invalid SQL.
 
 with bridge as (
 
-    select * from {{ source('warehouse', 'bridge_invoices_vehicles') }}
+    select * from {{ ref('bridge_invoices_vehicles') }}
 
 ), vehicles as (
 
-    select * from {{ source('warehouse', 'dim_vehicles') }}
+    select * from {{ ref('dim_vehicles') }}
 
 )
 

@@ -12,18 +12,6 @@ from infra.alerts import send_failure_alert
 from infra.config import config
 from infra.dbt_runner import run_dbt_build
 from infra.logger import get_logger
-from load.load_delinquency_snapshot import run_delinquency_snapshot_load
-from load.load_dimensions import run_dimensions_load
-from load.load_facts import run_facts_load
-from load.load_invoice_vehicle_bridge import run_bridge_load
-from transform.transform_cooperatives import transform as transform_cooperatives
-from transform.transform_customers import transform as transform_customers
-from transform.transform_delinquency import transform as transform_delinquency
-from transform.transform_invoices import transform as transform_invoices
-from transform.transform_regionals import transform as transform_regionals
-from transform.transform_statuses import transform_invoice_statuses, transform_statuses
-from transform.transform_vehicles import transform as transform_vehicles
-from transform.transform_volunteers import transform as transform_volunteers
 
 logger = get_logger(__name__)
 
@@ -34,6 +22,18 @@ logger = get_logger(__name__)
     on_crashed=[send_failure_alert],   # cobre Crashed (processo morto, infra, etc.)
 )
 def run_pipeline():
+    """Extracts every entity into raw, then lets dbt build the warehouse from it.
+
+    This is the whole pipeline now. The transform and load steps that used to
+    sit between these two blocks were deleted at the cutover: the business
+    rules they held are expressed in SQL under dbt/models, and the warehouse
+    they wrote is rebuilt from raw on every run.
+
+    Extraction still comes first and still fails loudly. It is the only step
+    that talks to something outside this machine, and a batch that does not
+    land is missing data for every model downstream of it -- there is no
+    second path left to cover for it.
+    """
     logger.info("Starting full pipeline...")
 
     config.validate()
@@ -47,25 +47,6 @@ def run_pipeline():
     run_invoice_extraction()
     run_delinquency_extraction()
 
-    transform_statuses()
-    transform_invoice_statuses()
-    transform_volunteers()
-    transform_cooperatives()
-    transform_regionals()
-    transform_customers()
-    transform_vehicles()
-    transform_invoices()
-    transform_delinquency()
-
-    run_dimensions_load()
-    run_facts_load()
-    run_bridge_load()
-    run_delinquency_snapshot_load()
-
-    # The dbt layer builds in the same flow, on the same data, on the same night.
-    # It ran on demand until 2026-08-28, and three days of drift were enough to
-    # collapse fifty-nine version transitions into a single date. Reconciliation
-    # between the two paths only means something while both run at one cadence.
     run_dbt_build()
 
     logger.info("Pipeline finished successfully.")

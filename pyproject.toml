@@ -5,13 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "sga-api-pipeline"
 version = "0.1.0"
-description = "ETL pipeline that extracts from the SGA API and loads a PostgreSQL data warehouse"
+description = "ELT pipeline that lands the SGA API in PostgreSQL and builds the warehouse with dbt"
 requires-python = ">=3.13"
 # Dependencies stay in requirements.txt: the Docker image and the CI install from
 # there, and duplicating them here would let the two drift apart.
 
 [tool.setuptools]
-packages = ["extract", "transform", "load", "infra", "orchestrators", "scripts"]
+packages = ["extract", "infra", "orchestrators", "scripts"]
 
 [tool.ruff]
 target-version = "py313"

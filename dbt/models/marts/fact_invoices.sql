@@ -13,6 +13,14 @@
 
 {{ config(materialized = 'view') }}
 
+-- A CTE rather than an inline alias on the ref: under dbt build --empty the
+-- ref renders as an already-aliased subquery.
+with base as (
+
+    select * from {{ ref('fact_invoices_base') }}
+
+)
+
 select
     f.*,
 
@@ -27,4 +35,4 @@ select
         else {{ faixa_atraso('f.data_vencimento', aging_as_of()) }}
     end as faixa_atraso
 
-from {{ ref('fact_invoices_base') }} f
+from base f

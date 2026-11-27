@@ -9,10 +9,17 @@
       fact_invoices and 1,422 rows in fact_delinquency_snapshot whose version
       exists today. Only null keys are touched: a resolved key is never
       re-pointed, which is what keeps history stable.
+
+      The ref is wrapped in its own subquery rather than aliased directly:
+      under dbt build --empty a ref renders as a subquery that already carries
+      an alias, and a second alias after it is invalid SQL.
     -#}
     update {{ this }} as f
     set sk_customer = v.sk_customer
-    from {{ ref('dim_customers') }} as v
+    from (
+        select codigo_associado, sk_customer, valido_de, valido_ate
+        from {{ ref('dim_customers') }}
+    ) as v
     where f.sk_customer is null
       and v.codigo_associado = f.codigo_associado
       and f.{{ date_column }} >= v.valido_de

@@ -16,6 +16,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
+from infra.alerts import send_backup_failure_alert
 from infra.config import config
 from infra.logger import get_logger
 
@@ -34,19 +35,25 @@ PROBE_DB = "sga_analytics_restore_probe"
 CRITICAL_TABLES = (
     "analytics.snap_vehicles",
     "analytics.snap_customers",
-    "analytics.fact_invoices",
+    "analytics.fact_invoices_base",
     "analytics.bridge_invoices_vehicles",
     "analytics.fact_delinquency_snapshot",
     "raw.invoices",
     "raw.vehicles",
     "raw.customers",
     "raw.delinquency",
+    "raw.invoice_lookups",
 )
 
 # psql and friends are not on PATH in this environment, and the absolute path
 # is the same reason infra/freshness.py is scheduled with one: Python is
 # installed per user, so anything running as SYSTEM cannot resolve it either.
 PG_BIN = Path(os.getenv("SGA_PG_BIN", r"C:\Program Files\PostgreSQL\18\bin"))
+
+
+# A hung pg_restore used to block the scheduled task forever, which looks
+# exactly like a backup that is still running.
+PG_COMMAND_TIMEOUT_SECONDS = 2 * 60 * 60
 
 
 class BackupVerificationError(RuntimeError):
@@ -69,7 +76,12 @@ def _run(executable: str, *args: str, database: str | None = None) -> str:
         *args,
     ]
     env = {**os.environ, "PGPASSWORD": config.DB_PASSWORD}
-    result = subprocess.run(command, capture_output=True, text=True, env=env)
+    try:
+        result = subprocess.run(
+            command, capture_output=True, text=True, env=env, timeout=PG_COMMAND_TIMEOUT_SECONDS
+        )
+    except subprocess.TimeoutExpired as e:
+        raise BackupVerificationError(f"{executable} did not finish within {PG_COMMAND_TIMEOUT_SECONDS}s.") from e
 
     if result.returncode != 0:
         raise BackupVerificationError(
@@ -152,8 +164,11 @@ def main() -> int:
     try:
         dump_warehouse(dump_path)
         counts = verify_restore(dump_path)
-    except BackupVerificationError as e:
-        logger.error(f"Backup of the analytics schema failed verification: {e}")
+    except Exception as e:
+        # The exit code only reaches Task Scheduler, which nobody reads: a backup
+        # missing from 2026-11-08 to 2026-11-22 went unnoticed. Say it out loud.
+        logger.error(f"Backup of the analytics schema failed: {e}")
+        send_backup_failure_alert(str(e))
         return 1
 
     listed = " | ".join(f"{table}: {count}" for table, count in sorted(counts.items()))
@@ -162,8 +177,8 @@ def main() -> int:
     return 0
 
 
-# Weekly dumps at ~78 MB each. Eight of them is two months of history for
-# roughly 600 MB, which is the trade this project can afford on one disk.
+# Weekly dumps, 266-455 MB each in 2026-11 and growing ~20 MB a week. Eight of
+# them is two months of history for roughly 3.5 GB on one disk.
 KEEP_LAST = 8
 
 

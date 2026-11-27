@@ -32,6 +32,16 @@ def test_redacts_bare_cpf_from_a_constraint_violation():
         ("cnpj 12.345.678/0001-99 invalido", "[CNPJ]"),
         ("contato fulano@empresa.com.br falhou", "[EMAIL]"),
         ("telefone (11) 98765-4321 recusado", "[TELEFONE]"),
+        ("cpf 123 456 789 01 duplicado", "[CPF]"),
+        ("cpf 123456789-01 duplicado", "[CPF]"),
+        ("cnpj 12345678000199 invalido", "[CNPJ]"),
+        ("telefone (11) 987654321 recusado", "[TELEFONE]"),
+        ("telefone 11 98765 4321 recusado", "[TELEFONE]"),
+        ("telefone 1132654321 recusado", "[TELEFONE]"),
+        ("telefone +55 11 987654321 recusado", "[TELEFONE]"),
+        ("placa ABC1D23 sem veiculo", "[PLACA]"),
+        ("placa ABC-1234 sem veiculo", "[PLACA]"),
+        ("chassi 9BWZZZ377VT004251 duplicado", "[CHASSI]"),
     ],
 )
 def test_redacts_each_pii_shape(raw, placeholder):

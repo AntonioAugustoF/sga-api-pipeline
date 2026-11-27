@@ -429,7 +429,7 @@ cd sga-api-pipeline
 Install dependencies:
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt   # dev: adds pytest and ruff
 ```
 
 Configure your environment variables — create a `.env` file in the root directory:

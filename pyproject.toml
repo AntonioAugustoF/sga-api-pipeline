@@ -7,7 +7,7 @@ name = "sga-api-pipeline"
 version = "0.1.0"
 description = "ELT pipeline that lands the SGA API in PostgreSQL and builds the warehouse with dbt"
 requires-python = ">=3.13"
-# Dependencies stay in requirements.txt: the Docker image and the CI install from
+# Dependencies stay in requirements.txt (runtime) and requirements-dev.txt (tests, lint): the Docker image and the CI install from
 # there, and duplicating them here would let the two drift apart.
 
 [tool.setuptools]

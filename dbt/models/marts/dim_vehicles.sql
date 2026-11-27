@@ -13,7 +13,24 @@
 -- froze them instead. Reconciliation therefore compares descriptive columns on
 -- current versions only; the timeline and the monitored columns are compared in
 -- full by the snapshot tests.
-{{ config(materialized = 'table') }}
+{#-
+  Rebuilt in full every run, so its indexes are recreated with it. Every
+  point-in-time join probes (codigo_veiculo, valido_de); with no index at all the
+  facts and marts sequentially scanned this table on every lookup.
+
+  Unnamed on purpose: while the post-hook runs, the previous build still
+  exists as the __dbt_backup relation and holds any fixed index name, so a
+  named `if not exists` would silently skip the new table.
+-#}
+{{
+    config(
+        materialized = 'table',
+        post_hook = [
+            "create unique index on {{ this }} (sk_vehicle)",
+            "create index on {{ this }} (codigo_veiculo, valido_de)",
+        ],
+    )
+}}
 
 with versions as (
 

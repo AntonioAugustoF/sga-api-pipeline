@@ -22,3 +22,9 @@ sources:
       - name: vehicles
       - name: invoices
       - name: delinquency
+      - name: invoice_lookups
+        description: >
+          Invoices re-read one by one through /buscar/boleto because they left
+          the open status outside every extraction window. Only receives a
+          batch on nights with something to reconcile, hence no freshness.
+        freshness: null

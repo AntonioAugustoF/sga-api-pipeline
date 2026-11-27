@@ -15,8 +15,11 @@
         incremental_strategy = 'merge',
         merge_exclude_columns = ['criado_em'],
         on_schema_change = 'fail',
+        post_hook = ["{{ backfill_sk_customer('data_emissao') }}"],
     )
 }}
+
+{%- set dt_referencia = "(d._extracted_at at time zone 'America/Sao_Paulo')::date" -%}
 
 with delinquency as (
 
@@ -74,24 +77,23 @@ select
 
     -- The grain's second key. Taken from the extraction rather than the run
     -- date, which is the debt the legacy dt_referencia carries.
-    (d._extracted_at at time zone 'America/Sao_Paulo')::date as dt_referencia,
+    {{ dt_referencia }} as dt_referencia,
 
-    -- calculate_days_overdue, floored at zero. Note the difference from
-    -- fact_invoices: there the measure is cleared once an invoice is paid, here
-    -- it is not. A snapshot records how overdue the invoice was on that day,
-    -- and a later payment does not change what was true then.
+    -- calculate_days_overdue, floored at zero, measured on the snapshot's own
+    -- date. Note the difference from fact_invoices: there the measure is
+    -- cleared once an invoice is paid, here it is not. A snapshot records how
+    -- overdue the invoice was on that day, and a later payment does not change
+    -- what was true then.
+    --
+    -- Measured against dt_referencia rather than current_date: the merge
+    -- rewrites these columns, so a rebuild of the same batch on a later day
+    -- used to rewrite the photograph with that later day's age.
     case
         when d.data_vencimento is null then null
-        else greatest(current_date - d.data_vencimento, 0)
+        else {{ dias_em_atraso('d.data_vencimento', dt_referencia) }}
     end as dias_em_atraso,
 
-    case
-        when d.data_vencimento is null then null
-        when greatest(current_date - d.data_vencimento, 0) <= 30 then '0-30'
-        when greatest(current_date - d.data_vencimento, 0) <= 60 then '31-60'
-        when greatest(current_date - d.data_vencimento, 0) <= 90 then '61-90'
-        else '90+'
-    end as faixa_atraso,
+    {{ faixa_atraso('d.data_vencimento', dt_referencia) }} as faixa_atraso,
 
     v.sk_customer,
 

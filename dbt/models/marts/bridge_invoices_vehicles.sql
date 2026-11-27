@@ -21,7 +21,8 @@
 with invoices as (
 
     select codigo_boleto, valor_boleto, veiculo, _extracted_at
-    from {{ ref('stg_sga__invoices') }}
+    -- The listing plus the open invoices it did not bring; see int_invoices_latest.
+    from {{ ref('int_invoices_latest') }}
 
 ), exploded as (
 

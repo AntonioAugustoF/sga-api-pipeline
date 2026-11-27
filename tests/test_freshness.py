@@ -31,7 +31,17 @@ def test_yesterdays_delinquency_snapshot_is_already_stale_at_the_morning_check()
     assert find_stale({"analytics.fact_delinquency_snapshot": 6.0}, max_age_hours=26) == {}
 
 
-def test_every_monitored_table_lives_in_analytics():
+def test_every_monitored_table_is_schema_qualified_outside_public():
     """The cutover repointed this check. A table left qualified as public, or left
     unqualified to be resolved by search_path, would watch a schema nothing writes."""
-    assert all(table.startswith("analytics.") for table in MONITORED_TABLES)
+    assert all(table.startswith(("analytics.", "raw.")) for table in MONITORED_TABLES)
+
+
+def test_every_nightly_raw_entity_is_watched():
+    """dbt run by hand on stale raw restamps the dimensions, so only the raw
+    batch timestamps prove the extraction itself happened."""
+    from orchestrators.run_pipeline import INDEPENDENT_EXTRACTIONS
+
+    watched = {t.removeprefix("raw.") for t in MONITORED_TABLES if t.startswith("raw.")}
+    expected = (set(INDEPENDENT_EXTRACTIONS) - {"statuses"}) | {"statuses", "invoice_statuses"}
+    assert watched == expected

@@ -1,0 +1,52 @@
+version: 2
+
+models:
+  - name: fact_invoices_base
+    description: >
+      Accumulated invoices, one row per codigo_boleto, merged from each night's
+      listing batch and corrected by the status lookups. Read it through
+      fact_invoices, which adds the aging measures.
+    columns:
+      - name: codigo_boleto
+        data_tests:
+          - unique
+          - not_null
+
+  - name: fact_invoices
+    description: >
+      fact_invoices_base plus dias_em_atraso and faixa_atraso, computed when the
+      view is read so they never freeze.
+    columns:
+      - name: codigo_boleto
+        data_tests:
+          - unique
+          - not_null
+
+unit_tests:
+  - name: aging_is_measured_on_the_day_the_fact_is_read
+    description: >
+      An unpaid invoice ages with the calendar, a paid one carries no aging,
+      and a future due date floors at zero.
+    model: fact_invoices
+    overrides:
+      macros:
+        aging_as_of: "'2026-11-27'::date"
+    given:
+      - input: ref('fact_invoices_base')
+        rows:
+          - {codigo_boleto: '1', pago: 'n', data_vencimento: '2026-11-20'}
+          - {codigo_boleto: '2', pago: 'n', data_vencimento: '2026-10-01'}
+          - {codigo_boleto: '3', pago: 'n', data_vencimento: '2026-08-15'}
+          - {codigo_boleto: '4', pago: 'n', data_vencimento: '2025-01-01'}
+          - {codigo_boleto: '5', pago: 'y', data_vencimento: '2025-01-01'}
+          - {codigo_boleto: '6', pago: null, data_vencimento: '2026-12-31'}
+          - {codigo_boleto: '7', pago: 'n', data_vencimento: null}
+    expect:
+      rows:
+        - {codigo_boleto: '1', dias_em_atraso: 7, faixa_atraso: '0-30'}
+        - {codigo_boleto: '2', dias_em_atraso: 57, faixa_atraso: '31-60'}
+        - {codigo_boleto: '3', dias_em_atraso: 104, faixa_atraso: '90+'}
+        - {codigo_boleto: '4', dias_em_atraso: 695, faixa_atraso: '90+'}
+        - {codigo_boleto: '5', dias_em_atraso: null, faixa_atraso: null}
+        - {codigo_boleto: '6', dias_em_atraso: 0, faixa_atraso: '0-30'}
+        - {codigo_boleto: '7', dias_em_atraso: null, faixa_atraso: null}

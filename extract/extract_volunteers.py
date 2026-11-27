@@ -1,6 +1,7 @@
 from infra.api_fetcher import APIFetcher, deduplicate_by_key
 from infra.authenticator import authenticate_user
 from infra.config import config
+from infra.extraction_guard import assert_extraction_complete
 from infra.logger import get_logger
 from infra.raw_writer import write_raw
 
@@ -28,12 +29,18 @@ def run_volunteer_extraction() -> None:
         user_token = authenticate_user()
         fetcher = APIFetcher(config.API_BASE_URL, user_token)
 
-        all_records = []
+        all_records: list[dict] = []
+        failures: dict[str, str] = {}
         for status in TARGET_STATUSES:
             try:
                 all_records.extend(extract_volunteers_by_status(status, fetcher))
             except Exception as e:
                 logger.warning(f"Error extracting volunteers for status {status}: {e}")
+                failures[status] = str(e)
+
+        # Both statuses land every night; one missing would silently drop every
+        # volunteer in it from the dimension.
+        assert_extraction_complete(failures, "volunteers")
 
         unique_volunteers = deduplicate_by_key(all_records, "codigo_voluntario")
         logger.info(f"Total extracted: {len(all_records)} | Unique: {len(unique_volunteers)}")

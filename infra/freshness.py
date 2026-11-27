@@ -43,10 +43,26 @@ MAX_AGE_HOURS = 26
 # day exists. Read as hours since that date's midnight it lands on the same
 # scale as the others — today's snapshot is at most 24h old, and yesterday's is
 # already past the 26h limit by the time the 06:00 check runs.
+#
+# The analytics tables prove dbt ran; they cannot prove the extraction did. A
+# dbt build run by hand on top of a week-old raw batch restamps every
+# dim_*.criado_em and turns the check green. So every entity the nightly flow
+# extracts is watched at the source too, through the batch timestamp that
+# raw_writer stamps once per extraction. raw.invoice_lookups is absent on
+# purpose: it only receives a batch on nights with something to reconcile.
 MONITORED_TABLES = {
     "analytics.dim_customers": "criado_em",
     "analytics.dim_vehicles": "criado_em",
     "analytics.fact_delinquency_snapshot": "dt_referencia",
+    "raw.statuses": "_extracted_at",
+    "raw.invoice_statuses": "_extracted_at",
+    "raw.volunteers": "_extracted_at",
+    "raw.cooperatives": "_extracted_at",
+    "raw.regionals": "_extracted_at",
+    "raw.customers": "_extracted_at",
+    "raw.vehicles": "_extracted_at",
+    "raw.invoices": "_extracted_at",
+    "raw.delinquency": "_extracted_at",
 }
 
 

@@ -1,7 +1,8 @@
-import json
 from datetime import UTC, datetime
 
-from sqlalchemy import text
+from sqlalchemy import column, insert, table
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.types import DateTime, Text
 
 from infra.db_connector import get_db_engine
 from infra.logger import get_logger
@@ -10,10 +11,9 @@ logger = get_logger(__name__)
 
 RAW_SCHEMA = "raw"
 
-# Tables are created by sql/ddl/010_raw_schema.sql. The allowlist is what makes
-# the f-string below safe: a table name is an identifier, which cannot be passed
-# as a bound parameter, so interpolating an unchecked entity string would be an
-# injection point.
+# Tables are created by sql/ddl/010_raw_schema.sql. The allowlist keeps the
+# target an identifier this module chose, never an arbitrary string from a
+# caller: table names cannot be bound parameters.
 KNOWN_ENTITIES = frozenset(
     {
         "regionals",
@@ -25,8 +25,24 @@ KNOWN_ENTITIES = frozenset(
         "invoices",
         "invoice_statuses",
         "delinquency",
+        "invoice_lookups",
     }
 )
+
+# Rows per INSERT statement. SQLAlchemy's insertmanyvalues renders a batch of
+# rows into one multi-VALUES statement, instead of the one round trip per row
+# that executemany over a text() statement costs with psycopg2.
+INSERT_BATCH_SIZE = 1000
+
+
+def _raw_table(entity: str):
+    return table(
+        entity,
+        column("_extracted_at", DateTime(timezone=True)),
+        column("_endpoint", Text),
+        column("payload", JSONB),
+        schema=RAW_SCHEMA,
+    )
 
 
 def write_raw(entity: str, endpoint: str, records: list[dict]) -> datetime:
@@ -47,22 +63,13 @@ def write_raw(entity: str, endpoint: str, records: list[dict]) -> datetime:
         )
 
     extracted_at = datetime.now(UTC)
-    statement = text(
-        f"INSERT INTO {RAW_SCHEMA}.{entity} (_extracted_at, _endpoint, payload) "
-        "VALUES (:extracted_at, :endpoint, CAST(:payload as jsonb))"
-    )
-    rows = [
-        {
-            "extracted_at": extracted_at,
-            "endpoint": endpoint,
-            "payload": json.dumps(record, ensure_ascii=False),
-        }
-        for record in records
-    ]
+    rows = [{"_extracted_at": extracted_at, "_endpoint": endpoint, "payload": record} for record in records]
+    statement = insert(_raw_table(entity))
 
     engine = get_db_engine()
     with engine.begin() as conn:
-        conn.execute(statement, rows)
+        for start in range(0, len(rows), INSERT_BATCH_SIZE):
+            conn.execute(statement, rows[start : start + INSERT_BATCH_SIZE])
 
     logger.info(f"raw.{entity}: {len(rows)} records landed at {extracted_at.isoformat()}.")
     return extracted_at

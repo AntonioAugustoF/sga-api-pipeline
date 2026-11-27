@@ -19,13 +19,20 @@ MAX_REASON_LENGTH = 1200
 # raised by psycopg2 quotes the offending value verbatim — e.g.
 # "DETAIL: Key (cpf_associado)=(12345678901) already exists" — which would
 # otherwise publish a real CPF to the Discord channel.
+#
+# Order matters: the longer identifiers go first so a CNPJ is not half-masked
+# as a phone. An 11- or 14-digit code that is not a document (a nosso_numero,
+# say) is masked too; over-masking a diagnostic costs less than leaking a CPF.
 _PII_PATTERNS = (
-    (re.compile(r"\b\d{3}\.\d{3}\.\d{3}-\d{2}\b"), "[CPF]"),
-    (re.compile(r"\b\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}\b"), "[CNPJ]"),
-    (re.compile(r"\b\d{14}\b"), "[CNPJ]"),
-    (re.compile(r"\b\d{11}\b"), "[CPF]"),
     (re.compile(r"\b[\w.%+-]+@[\w.-]+\.[A-Za-z]{2,}\b"), "[EMAIL]"),
-    (re.compile(r"\(?\b\d{2}\)?\s?9?\d{4}-\d{4}\b"), "[TELEFONE]"),
+    (re.compile(r"\b\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}\b"), "[CNPJ]"),
+    # 123.456.789-01, 123 456 789 01, 123456789-01, 12345678901
+    (re.compile(r"\b\d{3}[.\s]?\d{3}[.\s]?\d{3}[-\s]?\d{2}\b"), "[CPF]"),
+    # (11) 98765-4321, 11 98765 4321, (11) 987654321, 1132654321, +55 11 987654321
+    (re.compile(r"(?:\+?\b55\s?)?\(?\b\d{2}\)?\s?9?\d{4}[-\s]?\d{4}\b"), "[TELEFONE]"),
+    # Vehicle plates, old (ABC-1234) and Mercosul (ABC1D23), and 17-char chassis.
+    (re.compile(r"\b[A-Z]{3}-?\d[A-Z0-9]\d{2}\b"), "[PLACA]"),
+    (re.compile(r"\b[A-HJ-NPR-Z0-9]{17}\b"), "[CHASSI]"),
 )
 
 
@@ -157,3 +164,16 @@ def send_staleness_alert(stale_tables: dict[str, float | None], max_age_hours: f
     )
 
     _send_to_discord(content, "staleness alert")
+
+
+def send_backup_failure_alert(reason: str) -> None:
+    """Warns that the weekly warehouse backup failed or could not be verified."""
+    content = (
+        f"{_mention_prefix()}"
+        "**💾 O backup semanal do data warehouse falhou**\n\n"
+        f"**Motivo:** {_redact_pii(reason)}\n\n"
+        "O histórico do analytics não pode ser reconstruído pela API. "
+        "Rode `python -m scripts.backup_warehouse` manualmente depois de corrigir."
+    )
+
+    _send_to_discord(content, "backup failure alert")

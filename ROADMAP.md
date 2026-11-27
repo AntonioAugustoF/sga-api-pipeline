@@ -402,6 +402,37 @@ it were a new bug during reconciliation.
   on the absolute path to `python.exe`. Any environment change during the
   migration has to account for this.
 
+- **Aging is computed when the fact is read, never stored.** `dias_em_atraso`
+  and `faixa_atraso` were persisted by the `fact_invoices` merge, so an unpaid
+  invoice kept the age it had the last night it fell inside an extraction
+  window: 5,027 were in the wrong band on 2026-11-27. Migration 010 renamed
+  the table to `fact_invoices_base` and dropped the two columns;
+  `fact_invoices` is now a view that adds them. The delinquency snapshot keeps
+  them stored, measured against `dt_referencia`, because a photograph is
+  supposed to freeze.
+- **Status changes outside the extraction windows are invisible to the
+  listing.** 1,082 invoices sat as `aberto` in the fact on 2026-11-27; the API
+  had them cancelled. `extract/extract_invoice_lookups.py` re-reads, through
+  `/buscar/boleto/{nosso_numero}` (keyed by nosso_numero, not codigo_boleto),
+  every invoice open in the fact but absent from the delinquency batch.
+- **The SGA API blocks bursts, and the block includes authentication.** About
+  390 lookups at ~2.2 requests/s, then 403 on every endpoint,
+  `/usuario/autenticar` included. Lookups are therefore sequential, spaced 2s,
+  capped at 150 per night, and stop on the first 403.
+- **Pagination semantics differ per endpoint, both verified live.**
+  `/listar/associado` and `/listar/veiculo` read `inicio_paginacao` as a
+  record offset; `/listar/boleto` reads it as a page number, returns a bare
+  list without a total, and answers 406 past the last page.
+- **Open invoices outside every window used to exist only in the snapshot.**
+  The delinquency batch now also feeds `fact_invoices_base` and the bridge
+  (`int_invoices_latest`): 28 invoices on 2026-11-27 had no vehicle
+  attribution.
+- **29 nights after the cutover have no extraction of the large entities**,
+  including 2026-10-27 to 11-09. Their delinquency photographs cannot be
+  taken retroactively. Invoices issued or paid in a gap can be recovered with
+  `python -m extract.extract_invoices --backfill START END` followed by a dbt
+  build.
+
 ---
 
 ## 6. Tracking

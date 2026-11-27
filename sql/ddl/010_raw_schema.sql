@@ -66,6 +66,16 @@ CREATE TABLE IF NOT EXISTS raw.delinquency (
     payload       jsonb       NOT NULL
 );
 
+-- One row per invoice re-read through /buscar/boleto/{nosso_numero}: the open
+-- invoices that left the open status outside every extraction window. See
+-- extract/extract_invoice_lookups.py. Contact and payment-link fields are
+-- dropped before landing; everything else is the response untouched.
+CREATE TABLE IF NOT EXISTS raw.invoice_lookups (
+    _extracted_at timestamptz NOT NULL,
+    _endpoint     text        NOT NULL,
+    payload       jsonb       NOT NULL
+);
+
 
 CREATE INDEX IF NOT EXISTS ix_raw_regionals_extracted_at        ON raw.regionals         (_extracted_at DESC);
 CREATE INDEX IF NOT EXISTS ix_raw_cooperatives_extracted_at     ON raw.cooperatives      (_extracted_at DESC);
@@ -76,3 +86,4 @@ CREATE INDEX IF NOT EXISTS ix_raw_vehicles_extracted_at         ON raw.vehicles 
 CREATE INDEX IF NOT EXISTS ix_raw_invoices_extracted_at         ON raw.invoices          (_extracted_at DESC);
 CREATE INDEX IF NOT EXISTS ix_raw_invoice_statuses_extracted_at ON raw.invoice_statuses  (_extracted_at DESC);
 CREATE INDEX IF NOT EXISTS ix_raw_delinquency_extracted_at      ON raw.delinquency       (_extracted_at DESC);
+CREATE INDEX IF NOT EXISTS ix_raw_invoice_lookups_extracted_at  ON raw.invoice_lookups   (_extracted_at DESC);
